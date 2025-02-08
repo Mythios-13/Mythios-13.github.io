@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Static JSON Website</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it/dist/markdown-it.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 800px; margin: auto; }
+        .card { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 5px; background: #fafafa; }
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 10px; text-decoration: none; color: rgb(104, 0, 130) cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <h1>{{ title }}</h1>
+        <nav class="nav">
+            <a v-for="page in pages" :key="page.id" href="#" @click="currentPage = page">{{ page.title }}</a>
+        </nav>
+        <div v-if="currentPage" class="card">
+            <h2>{{ currentPage.title }}</h2>
+            <div v-html="renderMarkdown(currentPage.content)"></div>
+        </div>
+    </div>
+
+    <script>
+        const md = markdownit();
+        
+        const app = Vue.createApp({
+            data() {
+                return {
+                    title: "My Static Site",
+                    pages: [],
+                    currentPage: null
+                };
+            },
+            mounted() {
+                fetch('content.json')
+                    .then(response => response.json())
+                    .then(data => {
+                        this.pages = data.pages;
+                        this.currentPage = this.pages.length ? this.pages[0] : null;
+                    });
+            },
+            methods: {
+                renderMarkdown(content) {
+                    return md.render(content);
+                }
+            }
+        });
+
+        app.mount('#app');
+    </script>
+</body>
+</html>
