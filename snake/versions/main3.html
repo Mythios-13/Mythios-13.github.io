@@ -6,46 +6,22 @@
   <style>
     body {
       background-color: #222;
-
+      display: flex;
+      justify-content: center;
       align-items: center;
       height: 100vh;
       margin: 0;
       color: white;
       font-family: sans-serif;
     }
-    .content {
-      display: flex;
-      justify-content: center;
-    }
     canvas {
       background-color: #000;
       border: 2px solid #555;
     }
-    #sidebar {
-      width: 350px;
-      color:#555;
-      background: #fff;
-      border: 1px solid #ccc;
-      padding: 10px;
-      margin-right: 20px;
-      border-radius: 4px;
-      box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-    }
   </style>
 </head>
 <body>
-  <div id="sidebar">
-
-    <h3><a href="../">Back to home</a></h3>
-    <p>This litte experiment was inspired by this video :</p>
-    <a href="https://youtu.be/CqpDXeMIY1Q?feature=shared">@WesRoth : o3-mini is the FIRST DANGEROUS Autonomy Model | INSANE Coding and ML Abilities</a>
-  </div>
-
-  <div class="content">
-
   <canvas id="gameCanvas" width="400" height="400"></canvas>
-</div>
-
   <script>
     // Game configuration
     const canvas = document.getElementById('gameCanvas');
@@ -53,7 +29,7 @@
     const rows = 20;
     const cols = 20;
     const cellSize = canvas.width / cols;
-    const gameSpeed = 25; // milliseconds per game tick
+    const gameSpeed = 10; // milliseconds per game tick
 
     // Directions (dx, dy)
     const directions = {

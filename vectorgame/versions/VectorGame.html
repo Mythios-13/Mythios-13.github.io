@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Vector Race Game</title>
+  <style>
+    body { font-family: sans-serif; }
+    canvas { border: 1px solid #000; display: block; margin: 0 auto; }
+    #playerInfo { text-align: center; margin-bottom: 10px; }
+    .playerInput { width: 100px; margin: 0 5px; }
+  </style>
+</head>
+<body>
+  <!-- Editable Player Info -->
+  <div id="playerInfo"></div>
+  <!-- Game Canvas -->
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  
+  <script>
+    /**************************************
+     * Global Variables and Configuration *
+     **************************************/
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Cell size and grid dimensions.
+    const cellSize = 20;
+    const gridWidth = Math.floor(canvas.width / cellSize);
+    const gridHeight = Math.floor(canvas.height / cellSize);
+
+    // Define rows for finish and start lines.
+    const finishLineRow = 2;           // finish line near the top
+    const startLineRow = gridHeight - 3; // start line near the bottom
+
+    // Global game state.
+    let track = [];      // 2D array: true = on track; false = off track.
+    let players = [];    // Array of player objects.
+    let currentPlayerIndex = 0;
+    let possibleMoves = []; // Array of possible moves (calculated each turn)
+    let gameOver = false;
+
+    /**************************************
+     * Initialization Functions           *
+     **************************************/
+    
+    // Setup players. They start just behind the start line.
+    function initPlayers(numPlayers = 2) {
+      players = [];
+      const colors = ["red", "blue", "green", "orange"];
+      for (let i = 0; i < numPlayers; i++) {
+        players.push({
+          name: "Player " + (i + 1),
+          color: colors[i],
+          // Place players just behind the start line.
+          x: Math.floor(gridWidth / 2),
+          y: startLineRow + 1,
+          vx: 0,
+          vy: 0,
+          lastValid: { x: Math.floor(gridWidth / 2), y: startLineRow + 1 }
+        });
+      }
+      updatePlayerInfo();
+    }
+
+    // Render player names as editable input fields.
+    function updatePlayerInfo() {
+      const div = document.getElementById('playerInfo');
+      div.innerHTML = "";
+      players.forEach((player, index) => {
+        const playerDiv = document.createElement("span");
+        playerDiv.style.color = player.color;
+        playerDiv.style.fontWeight = index === currentPlayerIndex ? "bold" : "normal";
+        const input = document.createElement("input");
+        input.value = player.name;
+        input.className = "playerInput";
+        input.addEventListener("change", function() {
+          player.name = input.value;
+        });
+        playerDiv.appendChild(input);
+        if (index === currentPlayerIndex) {
+          playerDiv.innerHTML += " &larr; current turn &nbsp;&nbsp;";
+        } else {
+          playerDiv.innerHTML += " &nbsp;&nbsp;";
+        }
+        div.appendChild(playerDiv);
+      });
+    }
+
+    // Create a default track: a rectangular road (with margins off track).
+    function generateDefaultTrack() {
+      track = [];
+      for (let y = 0; y < gridHeight; y++) {
+        track[y] = [];
+        for (let x = 0; x < gridWidth; x++) {
+          // Make the inner area on track.
+          if (x > 1 && x < gridWidth - 2 && y > 1 && y < gridHeight - 1) {
+            track[y][x] = true;
+          } else {
+            track[y][x] = false;
+          }
+        }
+      }
+      // Make sure the finish and start lines are on track.
+      for (let x = 0; x < gridWidth; x++) {
+        track[finishLineRow][x] = true;
+        track[startLineRow][x] = true;
+      }
+    }
+
+    // (Optional) A simple random track generator that creates a winding corridor.
+    function generateRandomTrack() {
+      track = [];
+      for (let y = 0; y < gridHeight; y++) {
+        track[y] = [];
+        for (let x = 0; x < gridWidth; x++) {
+          track[y][x] = false;
+        }
+      }
+      let corridorCenter = Math.floor(gridWidth / 2);
+      const corridorWidth = 5;
+      for (let y = gridHeight - 1; y >= 0; y--) {
+        if (Math.random() < 0.5) {
+          corridorCenter += (Math.random() < 0.5 ? -1 : 1);
+          corridorCenter = Math.max(corridorWidth, Math.min(gridWidth - corridorWidth - 1, corridorCenter));
+        }
+        for (let x = 0; x < gridWidth; x++) {
+          if (x >= corridorCenter - corridorWidth && x <= corridorCenter + corridorWidth) {
+            track[y][x] = true;
+          }
+        }
+      }
+      // Ensure finish and start lines are on track.
+      for (let x = 0; x < gridWidth; x++) {
+        track[finishLineRow][x] = true;
+        track[startLineRow][x] = true;
+      }
+    }
+
+    /**************************************
+     * Game Mechanics                     *
+     **************************************/
+
+    // Calculate all possible moves based on the current velocity.
+    // Allowed acceleration in each direction is -1, 0, or 1.
+    function calculatePossibleMoves(player) {
+      const moves = [];
+      for (let ax = -1; ax <= 1; ax++) {
+        for (let ay = -1; ay <= 1; ay++) {
+          const newVx = player.vx + ax;
+          const newVy = player.vy + ay;
+          const newX = player.x + newVx;
+          const newY = player.y + newVy;
+          if (newX >= 0 && newX < gridWidth && newY >= 0 && newY < gridHeight) {
+            moves.push({
+              ax: ax,
+              ay: ay,
+              newVx: newVx,
+              newVy: newVy,
+              newX: newX,
+              newY: newY
+            });
+          }
+        }
+      }
+      return moves;
+    }
+
+    // Check whether the straight-line path from (x0,y0) to (x1,y1) stays on track.
+    // Uses a Bresenham-like algorithm to sample the cells along the path.
+    function checkPathOnTrack(x0, y0, x1, y1) {
+      let dx = Math.abs(x1 - x0);
+      let dy = Math.abs(y1 - y0);
+      let sx = (x0 < x1) ? 1 : -1;
+      let sy = (y0 < y1) ? 1 : -1;
+      let err = dx - dy;
+      let x = x0;
+      let y = y0;
+      while (true) {
+        if (!track[y] || !track[y][x]) {
+          return false;
+        }
+        if (x === x1 && y === y1) break;
+        let e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx) { err += dx; y += sy; }
+      }
+      return true;
+    }
+
+    /**************************************
+     * Rendering the Game                 *
+     **************************************/
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // 1. Draw each track cell.
+      for (let y = 0; y < gridHeight; y++) {
+        for (let x = 0; x < gridWidth; x++) {
+          ctx.fillStyle = track[y][x] ? "#ddd" : "#444";
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+      
+      // 2. Overlay the finish line as a checkered pattern.
+      for (let x = 0; x < gridWidth; x++) {
+        ctx.fillStyle = (x % 2 === 0) ? "black" : "white";
+        ctx.fillRect(x * cellSize, finishLineRow * cellSize, cellSize, cellSize);
+      }
+      
+      // 3. Overlay the start line as a bold red line.
+      ctx.fillStyle = "red";
+      ctx.fillRect(0, startLineRow * cellSize, canvas.width, 3);
+      
+      // 4. Draw grid lines over the entire board.
+      ctx.strokeStyle = "#aaa";
+      ctx.lineWidth = 0.5;
+      for (let x = 0; x <= gridWidth; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * cellSize, 0);
+        ctx.lineTo(x * cellSize, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= gridHeight; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * cellSize);
+        ctx.lineTo(canvas.width, y * cellSize);
+        ctx.stroke();
+      }
+      
+      // 5. Calculate and highlight possible moves for the current player.
+      possibleMoves = calculatePossibleMoves(players[currentPlayerIndex]);
+      possibleMoves.forEach(move => {
+        const validPath = checkPathOnTrack(
+          players[currentPlayerIndex].x,
+          players[currentPlayerIndex].y,
+          move.newX,
+          move.newY
+        );
+        ctx.fillStyle = validPath ? "rgba(0,255,0,0.3)" : "rgba(255,0,0,0.3)";
+        ctx.fillRect(move.newX * cellSize, move.newY * cellSize, cellSize, cellSize);
+      });
+      
+      // 6. Draw each player as a circle.
+      players.forEach(player => {
+        ctx.fillStyle = player.color;
+        ctx.beginPath();
+        ctx.arc(
+          (player.x + 0.5) * cellSize,
+          (player.y + 0.5) * cellSize,
+          cellSize / 3,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      });
+    }
+
+    /**************************************
+     * Handling User Interaction          *
+     **************************************/
+
+    // On canvas click, determine if a highlighted move was clicked.
+    canvas.addEventListener("click", function(event) {
+      if (gameOver) return;
+      
+      // Recalculate possible moves (in case the player's state changed).
+      possibleMoves = calculatePossibleMoves(players[currentPlayerIndex]);
+      
+      const rect = canvas.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const clickY = event.clientY - rect.top;
+      const gridX = Math.floor(clickX / cellSize);
+      const gridY = Math.floor(clickY / cellSize);
+      
+      // See if the clicked cell matches one of the possible moves.
+      const move = possibleMoves.find(m => m.newX === gridX && m.newY === gridY);
+      if (move) {
+        const player = players[currentPlayerIndex];
+        // Check the full path.
+        if (checkPathOnTrack(player.x, player.y, move.newX, move.newY)) {
+          // Valid move: update position, velocity, and record the move.
+          player.x = move.newX;
+          player.y = move.newY;
+          player.vx = move.newVx;
+          player.vy = move.newVy;
+          player.lastValid = { x: player.x, y: player.y };
+        } else {
+          // Off track: reset the player to their last valid position.
+          player.x = player.lastValid.x;
+          player.y = player.lastValid.y;
+          player.vx = 0;
+          player.vy = 0;
+        }
+        
+        // Win condition: if the player crosses the finish line.
+        if (player.y < finishLineRow) {
+          gameOver = true;
+          setTimeout(() => {
+            alert(player.name + " wins!");
+          }, 10);
+          return;
+        }
+        
+        // Advance to the next player.
+        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+        updatePlayerInfo();
+        draw();
+      }
+    });
+
+    /**************************************
+     * Game Initialization              *
+     **************************************/
+
+    function initGame() {
+      // Choose one of the track generators:
+      generateDefaultTrack();
+      // To use the random track instead, comment out the line above and uncomment:
+      // generateRandomTrack();
+      
+      initPlayers(2);  // Default 2 players (change to up to 4 if desired)
+      draw();
+    }
+    
+    // Start the game.
+    initGame();
+  </script>
+</body>
+</html>

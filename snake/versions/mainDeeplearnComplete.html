@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ML Snake Game with TensorFlow.js</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <style>
+    body {
+      background-color: #222;
+      color: white;
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      flex-direction: column;
+    }
+    canvas {
+      background-color: #000;
+      border: 2px solid #555;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="400" height="400"></canvas>
+  <script>
+    /***********************
+     * Game and Environment *
+     ***********************/
+    
+    // Canvas setup
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const rows = 20, cols = 20;
+    const cellSize = canvas.width / cols;
+    
+    // Directions: 0: up, 1: down, 2: left, 3: right.
+    const directions = {
+      0: {dx: 0,  dy: -1},
+      1: {dx: 0,  dy: 1},
+      2: {dx: -1, dy: 0},
+      3: {dx: 1,  dy: 0}
+    };
+    
+    // Game state variables
+    let snake = [
+      {x: 10, y: 10},
+      {x: 9,  y: 10},
+      {x: 8,  y: 10}
+    ];
+
+    let traps = [];
+    let fruit = randomFruit();
+
+    let score = 0;
+    let trapCount = 0;
+    let gameOver = false;
+    
+    // Return a random empty cell for the fruit.
+    function randomFruit() {
+      let pos, valid = false;
+      while (!valid) {
+        pos = {
+          x: Math.floor(Math.random() * cols),
+          y: Math.floor(Math.random() * rows)
+        };
+        valid = true;
+        if (snake.some(seg => seg.x === pos.x && seg.y === pos.y)) valid = false;
+        if (traps.some(trap => trap.x === pos.x && trap.y === pos.y)) valid = false;
+      }
+      return pos;
+    }
+    
+    // Add a trap at a random empty cell.
+    function addTrap() {
+      let pos, valid = false;
+      while (!valid) {
+        pos = {
+          x: Math.floor(Math.random() * cols),
+          y: Math.floor(Math.random() * rows)
+        };
+        valid = true;
+        if (snake.some(seg => seg.x === pos.x && seg.y === pos.y)) valid = false;
+        if (fruit.x === pos.x && fruit.y === pos.y) valid = false;
+        if (traps.some(trap => trap.x === pos.x && trap.y === pos.y)) valid = false;
+      }
+      traps.push(pos);
+    }
+    
+    // Draw the current game state.
+    function drawGame() {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw fruit.
+      ctx.fillStyle = "red";
+      ctx.fillRect(fruit.x * cellSize, fruit.y * cellSize, cellSize, cellSize);
+      
+      // Draw traps.
+      ctx.fillStyle = "purple";
+      traps.forEach(trap => {
+        ctx.fillRect(trap.x * cellSize, trap.y * cellSize, cellSize, cellSize);
+      });
+      
+      // Draw snake.
+      snake.forEach((seg, index) => {
+        ctx.fillStyle = (index === 0) ? "lime" : "green";
+        ctx.fillRect(seg.x * cellSize, seg.y * cellSize, cellSize, cellSize);
+      });
+      
+      // Draw score and trap count.
+      ctx.fillStyle = "white";
+      ctx.font = "16px sans-serif";
+      ctx.fillText("Score: " + score, 10, 20);
+      ctx.fillText("Traps Hit: " + trapCount, 10, 40);
+      
+      // Draw game over text if necessary.
+      if (gameOver) {
+        ctx.fillStyle = "white";
+        ctx.font = "48px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+      }
+    }
+    
+    /**********************************
+     * Environment Functions for RL   *
+     **********************************/
+    
+    // Return the game state as a flattened grid (array of length rows*cols).
+    // 0 = empty, 1 = snake, 2 = fruit, 3 = trap.
+    function getState() {
+      const state = new Array(rows * cols).fill(0);
+      snake.forEach(seg => {
+        state[seg.y * cols + seg.x] = 1;
+      });
+      state[fruit.y * cols + fruit.x] = 2;
+      traps.forEach(trap => {
+        state[trap.y * cols + trap.x] = 3;
+      });
+      return state;
+    }
+    
+    // Update the game state based on an action (direction) and return {reward, done}.
+    // The action is an object with dx,dy.
+    function updateGameWithAction(actionDir) {
+      const head = snake[0];
+      const newHead = { x: head.x + actionDir.dx, y: head.y + actionDir.dy };
+      
+      // Check collisions with walls.
+      if (newHead.x < 0 || newHead.x >= cols || newHead.y < 0 || newHead.y >= rows) {
+        return { reward: -10, done: true };
+      }
+      // Check collisions with self.
+      if (snake.some(seg => seg.x === newHead.x && seg.y === newHead.y)) {
+        return { reward: -10, done: true };
+      }
+      
+      // Add new head.
+      snake.unshift(newHead);
+      let reward = 1;
+      let done = false;
+      
+      // Check if fruit is eaten.
+      if (newHead.x === fruit.x && newHead.y === fruit.y) {
+        reward += 1;
+        score++;
+        fruit = randomFruit();
+      } else {
+        snake.pop();
+      }
+      
+      // Check for trap collision.
+      const trapIndex = traps.findIndex(trap => trap.x === newHead.x && trap.y === newHead.y);
+      if (trapIndex !== -1) {
+        trapCount++;
+        traps.splice(trapIndex, 1);
+        // If snake is of length 1, game over.
+        if (snake.length === 1) {
+          return { reward: -10, done: true };
+        }
+        // "Cut" the snake in half (retain head and half of the body).
+        const newLength = Math.ceil(snake.length / 2);
+        snake = snake.slice(0, newLength);
+        reward = -1;
+      }
+      
+      // Small negative reward per move to encourage faster fruit collection.
+      reward += -0.01;
+      
+      return { reward, done };
+    }
+    
+    /******************************
+     * Machine Learning with TF.js *
+     ******************************/
+    
+    // Experience replay memory.
+    let memory = [];
+    const maxMemorySize = 1000;
+    const batchSize = 32;
+    const gamma = 0.95;  // Discount factor.
+    
+    // Epsilon–greedy parameters.
+    let epsilon = 1.0;       // Starting exploration rate.
+    const epsilonMin = 0.01;
+    const epsilonDecay = 0.995;
+    
+    // Create a simple feedforward neural network.
+    function createModel(inputSize, outputSize) {
+      const model = tf.sequential();
+      model.add(tf.layers.dense({ inputShape: [inputSize], units: 128, activation: 'relu' }));
+      model.add(tf.layers.dense({ units: 128, activation: 'relu' }));
+      model.add(tf.layers.dense({ units: outputSize, activation: 'linear' })); // Output Q-values.
+      model.compile({ optimizer: tf.train.adam(0.001), loss: 'meanSquaredError' });
+      return model;
+    }
+    
+    const inputSize = rows * cols; // e.g., 400 for a 20x20 grid.
+    const outputSize = 4;          // 4 possible actions.
+    const model = createModel(inputSize, outputSize);
+    
+    // sampleBatch: Returns a random sample of elements from an array.
+    function sampleBatch(array, batchSize) {
+      //return array.slice(0,batchSize);
+      if (array.length <= batchSize) {
+        return array.slice();
+      }
+      const shuffled = array.slice();
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled.slice(0, batchSize);
+    }
+    
+    // Store experiences in replay memory.
+    function remember(exp) {
+      memory.push(exp);
+      if (memory.length > maxMemorySize) {
+        memory.shift();
+      }
+    }
+    
+    // Train the model on a batch of experiences.
+    async function trainStep() {
+      if (memory.length < batchSize) return;
+      const batch = sampleBatch(memory, batchSize);
+      const states = [];
+      const targetQs = [];
+      
+      for (const exp of batch) {
+        const { state, action, reward, nextState, done } = exp;
+        // Predict Q-values for current state.
+        const currentQsTensor = model.predict(tf.tensor2d([state]));
+        const currentQs = currentQsTensor.dataSync();
+        currentQsTensor.dispose();
+        
+        let maxNextQ = 0;
+        if (!done) {
+          const nextQsTensor = model.predict(tf.tensor2d([nextState]));
+          const nextQs = nextQsTensor.dataSync();
+          nextQsTensor.dispose();
+          maxNextQ = Math.max(...nextQs);
+        }
+        
+        // Q-learning target.
+        const target = reward + (done ? 0 : gamma * maxNextQ);
+        currentQs[action] = target;
+        
+        states.push(state);
+        targetQs.push(currentQs);
+      }
+      
+      const xs = tf.tensor2d(states);
+      const ys = tf.tensor2d(targetQs);
+      await model.fit(xs, ys, { epochs: 1 });
+      xs.dispose();
+      ys.dispose();
+    }
+    
+    /******************************
+     * Main Game & Training Loop  *
+     ******************************/
+    
+    // The ML game loop: at every frame, choose an action, update the game, store the experience, and train.
+    async function gameLoop() {
+      if (gameOver) return;
+      
+      // Get current state.
+      const state = getState();
+      
+      // Choose an action using epsilon–greedy strategy.
+      let action;
+      if (Math.random() < epsilon) {
+        action = Math.floor(Math.random() * outputSize);
+      } else {
+        const prediction = model.predict(tf.tensor2d([state]));
+        action = prediction.argMax(1).dataSync()[0];
+        prediction.dispose();
+      }
+      
+      // Map the action to a direction.
+      const actionDir = directions[action];
+      
+      // Update the game state with the chosen action.
+      const { reward, done } = updateGameWithAction(actionDir);
+      
+      // Get the next state.
+      const nextState = getState();
+      
+      // Save experience in memory.
+      remember({ state, action, reward, nextState, done });
+      
+      // Train the model on a batch of experiences.
+      await trainStep();
+      
+      // Decay epsilon.
+      if (epsilon > epsilonMin) {
+        epsilon *= epsilonDecay;
+      }
+      
+      if (done) {
+        //gameOver = true;
+        // reinit the game
+        snake = [
+          {x: 10, y: 10},
+          {x: 9,  y: 10},
+          {x: 8,  y: 10}
+        ]
+      }
+      
+      drawGame();
+      requestAnimationFrame(gameLoop);
+    }
+    
+    // Generate a new trap every 2 seconds.
+    setInterval(() => {
+      if (!gameOver) addTrap();
+    }, 2000);
+    
+    // Start the game loop.
+    gameLoop();
+  </script>
+</body>
+</html>

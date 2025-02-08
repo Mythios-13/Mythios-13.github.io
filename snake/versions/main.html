@@ -2,50 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Self-Playing Snake with Self-Avoidance</title>
+  <title>Self-Playing Snake Game</title>
   <style>
     body {
       background-color: #222;
-
+      display: flex;
+      justify-content: center;
       align-items: center;
       height: 100vh;
       margin: 0;
-      color: white;
-      font-family: sans-serif;
-    }
-    .content {
-      display: flex;
-      justify-content: center;
     }
     canvas {
       background-color: #000;
       border: 2px solid #555;
     }
-    #sidebar {
-      width: 350px;
-      color:#555;
-      background: #fff;
-      border: 1px solid #ccc;
-      padding: 10px;
-      margin-right: 20px;
-      border-radius: 4px;
-      box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-    }
   </style>
 </head>
 <body>
-  <div id="sidebar">
-
-    <h3><a href="../">Back to home</a></h3>
-    <p>This litte experiment was inspired by this video :</p>
-    <a href="https://youtu.be/CqpDXeMIY1Q?feature=shared">@WesRoth : o3-mini is the FIRST DANGEROUS Autonomy Model | INSANE Coding and ML Abilities</a>
-  </div>
-
-  <div class="content">
-
   <canvas id="gameCanvas" width="400" height="400"></canvas>
-</div>
-
   <script>
     // Game configuration
     const canvas = document.getElementById('gameCanvas');
@@ -53,7 +27,7 @@
     const rows = 20;
     const cols = 20;
     const cellSize = canvas.width / cols;
-    const gameSpeed = 25; // milliseconds per game tick
+    const gameSpeed = 100; // milliseconds per game tick
 
     // Directions (dx, dy)
     const directions = {
@@ -63,11 +37,6 @@
       'right': {dx: 1,  dy: 0}
     };
 
-    // Game state variables
-    let score = 0;
-    let trapCount = 0;
-    let gameOver = false;
-
     // Initialize snake: array of {x, y} coordinates. Head is first element.
     let snake = [
       {x: 10, y: 10},
@@ -75,83 +44,48 @@
       {x: 8, y: 10}
     ];
 
-
-    // Array of traps (each is an object {x, y})
-    let traps = [];
-
     // Fruit position
     let fruit = randomFruit();
-
-
-
-    // Start trap generation: add one trap every 2 seconds.
-    const trapInterval = setInterval(addTrap, 200);
 
     // Main game loop
     let gameInterval = setInterval(gameTick, gameSpeed);
 
     function gameTick() {
-      if (gameOver) return;
-
-      // Determine the next move automatically.
+      // Determine the next move automatically
       const nextDir = decideNextMove();
 
       if (!nextDir) {
-        endGame("No safe moves found.");
+        console.log("No safe moves found. Game Over!");
+        clearInterval(gameInterval);
         return;
       }
 
-      // Calculate new head position.
+      // Calculate new head position
       const head = snake[0];
       const newHead = { x: head.x + nextDir.dx, y: head.y + nextDir.dy };
 
-      // Check collision with walls or self.
+      // Check collision with walls or self
       if (isCollision(newHead)) {
-        endGame("Collision detected.");
+        console.log("Collision detected. Game Over!");
+        clearInterval(gameInterval);
         return;
       }
 
-      // Add new head.
+      // Add new head
       snake.unshift(newHead);
 
-      // Check if fruit is eaten.
+      // Check if fruit is eaten
       if (newHead.x === fruit.x && newHead.y === fruit.y) {
-        score++;
         fruit = randomFruit();
       } else {
-        // Remove tail (normal movement).
+        // Remove tail (move snake)
         snake.pop();
-      }
-
-      // Check if snake head hits a trap.
-      let trapIndex = traps.findIndex(trap => trap.x === newHead.x && trap.y === newHead.y);
-      if (trapIndex !== -1) {
-        trapCount++;
-        traps.splice(trapIndex, 1);
-        // If the snake's length is 1 when hit, it's game over.
-        if (snake.length === 1) {
-          endGame("Snake too short after cut!");
-          return;
-        }
-        // Cut the snake in half (keep the head and half of the body).
-        let newLength = Math.ceil(snake.length / 2);
-        snake = snake.slice(0, newLength);
       }
 
       drawGame();
     }
 
-    // End the game, display a message, and clear intervals.
-    function endGame(message) {
-      console.log(message);
-      gameOver = true;
-      clearInterval(gameInterval);
-      clearInterval(trapInterval);
-      drawGame();  // Final drawing including GAME OVER message.
-    }
-
     // Decide next move using a BFS pathfinder to the fruit.
-    // The pathfinder now treats the entire snake body as an obstacle.
     // If a path exists, return the first direction step along that path.
     // Otherwise, choose any safe move.
     function decideNextMove() {
@@ -180,20 +114,18 @@
     }
 
     // Breadth-First Search (BFS) to find a shortest path from start to goal avoiding obstacles.
-    // Obstacles: the entire snake body and traps.
+    // Obstacles: snake's current body (except the tail, which will move) and walls.
     function findPath(start, goal, snakeBody) {
       const queue = [];
       const visited = new Array(rows).fill(null).map(() => new Array(cols).fill(false));
       const prev = new Array(rows).fill(null).map(() => new Array(cols).fill(null));
 
-      // Create a set representing obstacles.
+      // Create a grid representing obstacles. We allow the tail cell because it will move.
       const obstacles = new Set();
-      // Mark every snake cell as an obstacle.
-      for (let i = 0; i < snakeBody.length; i++) {
+      // Mark all snake cells except the last one (tail)
+      for (let i = 0; i < snakeBody.length - 1; i++) {
         obstacles.add(`${snakeBody[i].x},${snakeBody[i].y}`);
       }
-      // Also add traps as obstacles.
-      traps.forEach(trap => obstacles.add(`${trap.x},${trap.y}`));
 
       queue.push(start);
       visited[start.y][start.x] = true;
@@ -201,7 +133,7 @@
       while (queue.length > 0) {
         const current = queue.shift();
         if (current.x === goal.x && current.y === goal.y) {
-          // Found the goal; reconstruct path.
+          // Found the goal; reconstruct path
           const path = [];
           let temp = current;
           while (temp) {
@@ -212,7 +144,7 @@
           return path;
         }
 
-        // Explore neighbors.
+        // Explore neighbors
         for (const key in directions) {
           const dir = directions[key];
           const neighbor = { x: current.x + dir.dx, y: current.y + dir.dy };
@@ -227,17 +159,16 @@
           queue.push(neighbor);
         }
       }
-      // No path found.
+      // No path found
       return null;
     }
 
-    // Check if a position collides with the snake's body or is out of bounds.
-    // (Traps are handled separately.)
+    // Check if a position collides with the snake or is out of bounds.
     function isCollision(pos) {
       if (pos.x < 0 || pos.x >= cols || pos.y < 0 || pos.y >= rows) {
         return true;
       }
-      // Check if it collides with any part of the snake.
+      // Check if it collides with any part of the snake
       for (const cell of snake) {
         if (cell.x === pos.x && cell.y === pos.y) {
           return true;
@@ -246,7 +177,7 @@
       return false;
     }
 
-    // Randomly place fruit on an empty cell.
+    // Randomly place fruit on an empty cell
     function randomFruit() {
       let valid = false;
       let pos;
@@ -256,96 +187,34 @@
           y: Math.floor(Math.random() * rows)
         };
         valid = true;
-        // Ensure fruit does not spawn on the snake.
         for (const cell of snake) {
           if (cell.x === pos.x && cell.y === pos.y) {
             valid = false;
             break;
-          }
-        }
-        // Ensure fruit does not spawn on a trap.
-        if (valid) {
-          for (const trap of traps) {
-            if (trap.x === pos.x && trap.y === pos.y) {
-              valid = false;
-              break;
-            }
           }
         }
       }
       return pos;
     }
 
-    // Add a trap at a random empty cell.
-    function addTrap() {
-      let valid = false;
-      let pos;
-      while (!valid) {
-        pos = {
-          x: Math.floor(Math.random() * cols),
-          y: Math.floor(Math.random() * rows)
-        };
-        valid = true;
-        // Check that the position is not occupied by the snake, fruit, or another trap.
-        for (const cell of snake) {
-          if (cell.x === pos.x && cell.y === pos.y) {
-            valid = false;
-            break;
-          }
-        }
-        if (valid && fruit.x === pos.x && fruit.y === pos.y) {
-          valid = false;
-        }
-        if (valid) {
-          for (const trap of traps) {
-            if (trap.x === pos.x && trap.y === pos.y) {
-              valid = false;
-              break;
-            }
-          }
-        }
-      }
-      traps.push(pos);
-    }
-
-    // Draw the game state.
+    // Draw the game state
     function drawGame() {
-      // Clear canvas.
+      // Clear canvas
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw fruit.
+      // Draw fruit
       ctx.fillStyle = 'red';
       ctx.fillRect(fruit.x * cellSize, fruit.y * cellSize, cellSize, cellSize);
 
-      // Draw traps.
-      ctx.fillStyle = 'purple';
-      traps.forEach(trap => {
-        ctx.fillRect(trap.x * cellSize, trap.y * cellSize, cellSize, cellSize);
-      });
-
-      // Draw snake.
+      // Draw snake
       for (let i = 0; i < snake.length; i++) {
         ctx.fillStyle = (i === 0) ? 'lime' : 'green';
         ctx.fillRect(snake[i].x * cellSize, snake[i].y * cellSize, cellSize, cellSize);
       }
-
-      // Draw score and trap count.
-      ctx.fillStyle = 'white';
-      ctx.font = '16px sans-serif';
-      ctx.fillText(`Score: ${score}`, 10, 20);
-      ctx.fillText(`Traps Hit: ${trapCount}`, 10, 40);
-
-      // If game over, display GAME OVER text.
-      if (gameOver) {
-        ctx.fillStyle = 'white';
-        ctx.font = '48px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
-      }
     }
 
-    // Initial draw.
+    // Initial draw
     drawGame();
   </script>
 </body>

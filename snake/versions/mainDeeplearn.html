@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ML Snake with TensorFlow.js</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <style>
+    /* Your CSS here */
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="400" height="400"></canvas>
+  <script>
+    // --- Game Variables and Environment Setup ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const rows = 20;
+    const cols = 20;
+    const cellSize = canvas.width / cols;
+    const gameSpeed = 10; // milliseconds per game tick
+
+    // Directions (dx, dy)
+    const directions = {
+      'up':    {dx: 0,  dy: -1},
+      'down':  {dx: 0,  dy: 1},
+      'left':  {dx: -1, dy: 0},
+      'right': {dx: 1,  dy: 0}
+    };
+
+    // Game state variables
+    let score = 0;
+    let trapCount = 0;
+    let gameOver = false;
+
+    // Initialize snake: array of {x, y} coordinates. Head is first element.
+    let snake = [
+      {x: 10, y: 10},
+      {x: 9, y: 10},
+      {x: 8, y: 10}
+    ];
+
+
+    // Array of traps (each is an object {x, y})
+    let traps = [];
+
+    // Fruit position
+    let fruit = randomFruit();
+
+    function updateGameWithAction(actionDir) {
+        let rewardCound = 0;
+      if (gameOver) return { reward:-10, done : false };
+
+      // Determine the next move automatically.
+      const nextDir = actionDir;
+
+      if (!nextDir) {
+        endGame("No safe moves found.");
+        return;
+      }
+
+      // Calculate new head position.
+      const head = snake[0];
+      let newHead;
+      // Illegal move
+      if(head.x + nextDir.dx <= 0 || head.x + nextDir.dx >= 20
+        || head.y + nextDir.dy <=0 || head.y + nextDir.dy >= 20
+      ){
+         newHead = { x: head.x , y: head.y  };
+        rewardCound-=20;
+      } else {
+         newHead = { x: head.x + nextDir.dx, y: head.y + nextDir.dy };
+      }
+      
+
+      // Check collision with walls or self.
+      if (isCollision(newHead)) {
+        //endGame("Collision detected.");
+        rewardCound-=20;
+      }
+
+      // Add new head.
+      snake.unshift(newHead);
+
+      // Check if fruit is eaten.
+      if (newHead.x === fruit.x && newHead.y === fruit.y) {
+        score++;
+        rewardCound++;
+        fruit = randomFruit();
+      } else {
+        // Remove tail (normal movement).
+        snake.pop();
+      }
+
+      // Check if snake head hits a trap.
+      let trapIndex = traps.findIndex(trap => trap.x === newHead.x && trap.y === newHead.y);
+      if (trapIndex !== -1) {
+        trapCount++;
+        traps.splice(trapIndex, 1);
+        // If the snake's length is 1 when hit, it's game over.
+        if (snake.length === 1) {
+          //endGame("Snake too short after cut!");
+          rewardCound-=10;
+          //return { reward:-10, done : false };
+        }
+        // Cut the snake in half (keep the head and half of the body).
+        let newLength = Math.ceil(snake.length / 2);
+        snake = snake.slice(0, newLength);
+        rewardCound-=2;
+      }
+
+      drawGame();
+      return { reward:rewardCound, done : false };
+    }
+
+        // End the game, display a message, and clear intervals.
+    function endGame(message) {
+      console.log(message);
+      gameOver = true;
+      //clearInterval(gameInterval);
+      //clearInterval(trapInterval);
+      drawGame();  // Final drawing including GAME OVER message.
+    }
+    // Define grid size, snake, fruit, traps, etc.
+
+
+    // Define a simple feedforward model.
+    function createModel(inputSize, outputSize) {
+        const model = tf.sequential();
+        model.add(tf.layers.dense({inputShape: [inputSize], units: 128, activation: 'relu'}));
+        model.add(tf.layers.dense({units: 128, activation: 'relu'}));
+        model.add(tf.layers.dense({units: outputSize, activation: 'linear'})); // output Q-values
+        model.compile({optimizer: tf.train.adam(0.001), loss: 'meanSquaredError'});
+        return model;
+    }
+    /**
+     * Returns a random sample of elements from an array.
+     * Uses the Fisher-Yates shuffle algorithm to shuffle a copy of the array
+     * and then returns the first `batchSize` elements.
+     *
+     * @param {Array} array - The array to sample from.
+     * @param {number} batchSize - The number of samples to return.
+     * @returns {Array} A random sample of `batchSize` elements.
+     */
+    function sampleBatch(array, batchSize) {
+    // If the array length is less than or equal to batchSize, return a copy of the whole array.
+    if (array.length <= batchSize) {
+        return array.slice();
+    }
+    
+    // Create a copy of the array so that we don't modify the original.
+    const shuffled = array.slice();
+    
+    // Fisher-Yates shuffle: shuffle the array in-place.
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    
+    // Return the first batchSize elements from the shuffled array.
+    return shuffled.slice(0, batchSize);
+    }
+
+
+
+
+    // (Re-use much of your existing game code, but add functions to return the state as an array)
+    const batchSize = 50;
+    const gamma = 0.95; // discount factor
+
+    async function trainStep(model) {
+        if (memory.length < batchSize) return;
+
+        // Sample a random batch
+        const batch = sampleBatch(memory, batchSize);
+
+        // Prepare training arrays.
+        const states = [];
+        const targetQs = [];
+        for (let exp of batch) {
+            const {state, action, reward, nextState, done} = exp;
+            // Predict Q-values for current state.
+            const currentQs = model.predict(tf.tensor2d([state])).dataSync();
+            
+            // Predict Q-values for next state.
+            let maxNextQ = 0;
+            if (!done) {
+            const nextQs = model.predict(tf.tensor2d([nextState])).dataSync();
+            maxNextQ = Math.max(...nextQs);
+            }
+            
+            // Q-learning target: reward + gamma * max_next_q
+            const target = reward + (done ? 0 : gamma * maxNextQ);
+            
+            // Update the Q-value for the action taken.
+            currentQs[action] = target;
+            
+            states.push(state);
+            targetQs.push(currentQs);
+        }
+        
+        // Train on this batch.
+        await model.fit(tf.tensor2d(states), tf.tensor2d(targetQs), {epochs: 1});
+    }
+
+
+    // Function to convert the current game state to a vector (or tensor)
+    function getState() {
+      // For example, a 20x20 grid flattened to a vector.
+      // 0 = empty, 1 = snake, 2 = fruit, 3 = trap.
+      const state = new Array(400).fill(0);
+      // Fill in snake positions.
+      snake.forEach(seg => state[seg.y * 20 + seg.x] = 1);
+      // Set fruit and trap positions.
+      state[fruit.y * 20 + fruit.x] = 2;
+      traps.forEach(trap => state[trap.y * 20 + trap.x] = 3);
+      return state;
+    }
+    
+    // --- ML Setup ---
+    const inputSize = 400; // example for a 20x20 grid
+    const outputSize = 4;  // up, down, left, right
+    const model = createModel(inputSize, outputSize);
+    
+    // Memory buffer for experience replay.
+    let memory = [];
+    const maxMemorySize = 10000;
+    
+    function remember(experience) {
+      memory.push(experience);
+      if (memory.length > maxMemorySize) {
+        memory.shift();
+      }
+    }
+    
+    // Epsilon for exploration.
+    let epsilon = 1.0; // start high, then decay
+    const epsilonMin = 0.01;
+    const epsilonDecay = 0.995;
+    
+
+// Original game
+function isCollision(pos) {
+      if (pos.x < 0 || pos.x >= cols || pos.y < 0 || pos.y >= rows) {
+        return true;
+      }
+      // Check if it collides with any part of the snake.
+      for (const cell of snake) {
+        if (cell.x === pos.x && cell.y === pos.y) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Randomly place fruit on an empty cell.
+    function randomFruit() {
+      let valid = false;
+      let pos;
+      while (!valid) {
+        pos = {
+          x: Math.floor(Math.random() * cols),
+          y: Math.floor(Math.random() * rows)
+        };
+        valid = true;
+        // Ensure fruit does not spawn on the snake.
+        for (const cell of snake) {
+          if (cell.x === pos.x && cell.y === pos.y) {
+            valid = false;
+            break;
+          }
+        }
+        // Ensure fruit does not spawn on a trap.
+        if (valid) {
+          for (const trap of traps) {
+            if (trap.x === pos.x && trap.y === pos.y) {
+              valid = false;
+              break;
+            }
+          }
+        }
+      }
+      return pos;
+    }
+
+    // Add a trap at a random empty cell.
+    function addTrap() {
+      let valid = false;
+      let pos;
+      while (!valid) {
+        pos = {
+          x: Math.floor(Math.random() * cols),
+          y: Math.floor(Math.random() * rows)
+        };
+        valid = true;
+        // Check that the position is not occupied by the snake, fruit, or another trap.
+        for (const cell of snake) {
+          if (cell.x === pos.x && cell.y === pos.y) {
+            valid = false;
+            break;
+          }
+        }
+        if (valid && fruit.x === pos.x && fruit.y === pos.y) {
+          valid = false;
+        }
+        if (valid) {
+          for (const trap of traps) {
+            if (trap.x === pos.x && trap.y === pos.y) {
+              valid = false;
+              break;
+            }
+          }
+        }
+      }
+      traps.push(pos);
+    }
+
+    // Draw the game state.
+    function drawGame() {
+      // Clear canvas.
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw fruit.
+      ctx.fillStyle = 'red';
+      ctx.fillRect(fruit.x * cellSize, fruit.y * cellSize, cellSize, cellSize);
+
+      // Draw traps.
+      ctx.fillStyle = 'purple';
+      traps.forEach(trap => {
+        ctx.fillRect(trap.x * cellSize, trap.y * cellSize, cellSize, cellSize);
+      });
+
+      // Draw snake.
+      for (let i = 0; i < snake.length; i++) {
+        ctx.fillStyle = (i === 0) ? 'lime' : 'green';
+        ctx.fillRect(snake[i].x * cellSize, snake[i].y * cellSize, cellSize, cellSize);
+      }
+
+      // Draw score and trap count.
+      ctx.fillStyle = 'white';
+      ctx.font = '16px sans-serif';
+      ctx.fillText(`Score: ${score}`, 10, 20);
+      ctx.fillText(`Traps Hit: ${trapCount}`, 10, 40);
+
+      // If game over, display GAME OVER text.
+      if (gameOver) {
+        ctx.fillStyle = 'white';
+        ctx.font = '48px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+      }
+    }
+
+
+
+
+
+
+
+    // --- Game and Training Loop ---
+    async function gameLoop() {
+      if (gameOver) return;
+      
+      // Get current state
+      const state = getState();
+      
+      // Choose an action using epsilon-greedy.
+      let action;
+      if (Math.random() < epsilon) {
+        action = Math.floor(Math.random() * outputSize);
+      } else {
+        const prediction = model.predict(tf.tensor2d([state]));
+        action = prediction.argMax(1).dataSync()[0];
+      }
+      
+      // Convert action number to direction (0: up, 1: down, 2: left, 3: right)
+      const actionDir = Object.values(directions)[action];
+      
+      // Apply the action to update the game (move the snake, check fruit, traps, collisions, etc.)
+      // This is similar to your existing gameTick(), but now you record the result.
+      const { reward, done } = updateGameWithAction(actionDir);
+      
+      // Get next state after action.
+      const nextState = getState();
+      console.log(reward, ' : ', done);
+      
+      // Remember the experience.
+      remember({ state, action, reward, nextState, done });
+      
+      // Train on a batch of experiences.
+      await trainStep(model);
+      
+      // Decay epsilon.
+      if (epsilon > epsilonMin) {
+        epsilon *= epsilonDecay;
+      }
+      
+      // Draw the game, schedule next loop iteration.
+      drawGame();
+      if (!done) {
+        requestAnimationFrame(gameLoop);
+      } else {
+        gameOver = true;
+        // Optionally restart or display GAME OVER.
+      }
+    }
+    
+    // Kick off the game loop.
+    gameLoop();
+    
+    // --- Utility Functions ---
+    
+    // createModel() function (as defined above)
+    // trainStep() function (as defined above)
+    // updateGameWithAction() should update the snake, fruit, traps, and return { reward, done }
+    // drawGame() to render the state on the canvas
+    // directions, snake, fruit, traps, etc. remain as in your original code.
+    
+  </script>
+</body>
+</html>
