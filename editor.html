@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline JSON Editor</title>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it/dist/markdown-it.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Open Sans', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #eef1f5;
+      color: #333;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 40px auto;
+      background: #fff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      font-weight: 600;
+      color: #444;
+    }
+    .nav {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .nav a {
+      display: inline-block;
+      margin: 0 8px;
+      padding: 8px 16px;
+      text-decoration: none;
+      color: #6200ea;
+      border-radius: 4px;
+      transition: background 0.3s, color 0.3s;
+    }
+    .nav a:hover,
+    .nav a.active {
+      background: #6200ea;
+      color: #fff;
+    }
+    .card {
+      border: 1px solid #ddd;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      background: #fafafa;
+      animation: fadeIn 0.5s ease-in-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0 15px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-size: 1rem;
+    }
+    label {
+      font-weight: 600;
+      margin-bottom: 5px;
+      display: block;
+      color: #555;
+    }
+    button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background 0.3s;
+      margin-bottom: 10px;
+    }
+    .btn-add { background: #28a745; color: #fff; }
+    .btn-remove { background: #dc3545; color: #fff; }
+    .btn-download { background: #007bff; color: #fff; }
+    button:hover { opacity: 0.9; }
+    .preview {
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 5px;
+      background: #f9f9f9;
+      margin-top: 10px;
+    }
+    @media (max-width: 600px) {
+      .container { padding: 15px; }
+      input, textarea, select { font-size: 0.9rem; }
+      button { font-size: 0.9rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="editor" class="container">
+    <h1>📄 JSON Content Editor</h1>
+    <nav class="nav">
+      <a v-for="(page, index) in pages" 
+         :key="index" 
+         href="#"
+         :class="{ active: currentPageIndex === index }"
+         @click.prevent="selectPage(page, index)">
+         {{ page.title || 'Untitled' }}
+      </a>
+    </nav>
+    <div v-if="currentPageIndex !== null" class="card">
+      <label for="pageTitle">Title:</label>
+      <input id="pageTitle" v-model="currentPage.title" placeholder="Page Title" />
+
+      <label for="pageContent">Content (Markdown):</label>
+      <textarea id="pageContent" v-model="currentPage.content" placeholder="Page Content" rows="6"></textarea>
+
+      <label for="templateSelect">Template:</label>
+      <select id="templateSelect" v-model="currentPage.template" @change="templateChange">
+        <option v-for="template in templates" :value="template.id">
+          {{ template.name }}
+        </option>
+      </select>
+
+      <div v-if="currentPage.extraData">
+        <label>Additional Data:</label>
+        <div v-for="(value, id) in currentPage.extraData" :key="id">
+          <small style="color: #666;">{{ id }}</small>
+          <textarea v-model="currentPage.extraData[id]" placeholder="Additional Data" rows="2"></textarea>
+        </div>
+      </div>
+
+      <label>Preview:</label>
+      <div class="preview" v-html="applyTemplate(currentPage)"></div>
+      <button class="btn-remove" @click="removePage(currentPageIndex)">❌ Remove</button>
+    </div>
+    <button class="btn-add" @click="addPage">➕ Add Page</button>
+    <button class="btn-download" @click="downloadJSON">⬇️ Download JSON</button>
+
+    <h1>📄 Preview of All Pages</h1>
+    <div v-for="(page, index) in pages" :key="index" class="card">
+      <div class="preview" v-html="applyTemplate(page)"></div>
+      <button class="btn-remove" @click="removePage(index)">❌ Remove</button>
+    </div>
+  </div>
+
+  <script>
+    const md = markdownit();
+
+    const editorApp = Vue.createApp({
+      data() {
+        return {
+          pages: [{ title: "Welcome", content: "# Site under construction\nStay tuned for updates!", template: "default" }],
+          templates: [],
+          currentPage: null,
+          currentPageIndex: null
+        };
+      },
+      mounted() {
+        fetch('content.json')
+          .then(response => response.json())
+          .then(data => {
+            this.pages = data.pages;
+            this.templates = data.templates;
+            if (this.pages.length) {
+              this.currentPage = this.pages[0];
+              this.currentPageIndex = 0;
+            }
+          });
+      },
+      methods: {
+        selectPage(page, index) {
+          this.currentPage = page;
+          this.currentPageIndex = index;
+        },
+        addPage() {
+          const newPage = { title: "New Page", content: "", template: "default" };
+          this.pages.push(newPage);
+          this.currentPageIndex = this.pages.length - 1;
+          this.currentPage = newPage;
+        },
+        removePage(index) {
+          this.pages.splice(index, 1);
+          if (this.pages.length) {
+            this.currentPageIndex = 0;
+            this.currentPage = this.pages[0];
+          } else {
+            this.currentPage = null;
+            this.currentPageIndex = null;
+          }
+        },
+        templateChange(event) {
+          const selectedTemplateId = event.target.value;
+          if(selectedTemplateId === 'default'){
+            delete this.currentPage.extraData;
+            return;
+          }
+          for(let template of this.templates) {
+            if(template.id === selectedTemplateId) {
+              // Use a deep clone so we don't accidentally bind to the template’s default extraData
+              this.currentPage.extraData = JSON.parse(JSON.stringify(template.extraData || {}));
+              break;
+            }
+          }
+        },
+        downloadJSON() {
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ pages: this.pages, templates: this.templates }, null, 2));
+          const dlAnchorElem = document.createElement('a');
+          dlAnchorElem.setAttribute("href", dataStr);
+          dlAnchorElem.setAttribute("download", "content.json");
+          dlAnchorElem.click();
+        },
+        applyTemplate(page) {
+          let template = this.templates.find(t => t.id === page.template) ||
+                         { structure: "<h2>{{title}}</h2><div>{{content}}</div>" };
+
+          return template.structure
+            .replace(/{{{(.*?)}}}/g, (match, token) => {
+              return page.extraData && page.extraData[token] ? page.extraData[token] : '';
+            })
+            .replace(/{{(.*?)}}/g, (match, token) => {
+              token = token.trim();
+              if (token === 'content') {
+                return md.render(page.content);
+              } else if (token === 'title') {
+                return page.title;
+              } else {
+                return page.extraData && page.extraData[token] ? md.render(page.extraData[token]) : '';
+              }
+            });
+        }
+      }
+    });
+
+    editorApp.mount('#editor');
+  </script>
+</body>
+</html>

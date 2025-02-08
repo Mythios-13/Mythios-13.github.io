@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Self-Playing Snake with Self-Avoidance</title>
+  <style>
+    body {
+      background-color: #222;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      color: white;
+      font-family: sans-serif;
+    }
+    canvas {
+      background-color: #000;
+      border: 2px solid #555;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="400" height="400"></canvas>
+  <script>
+    // Game configuration
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const rows = 20;
+    const cols = 20;
+    const cellSize = canvas.width / cols;
+    const gameSpeed = 10; // milliseconds per game tick
+
+    // Directions (dx, dy)
+    const directions = {
+      'up':    {dx: 0,  dy: -1},
+      'down':  {dx: 0,  dy: 1},
+      'left':  {dx: -1, dy: 0},
+      'right': {dx: 1,  dy: 0}
+    };
+
+    // Game state variables
+    let score = 0;
+    let trapCount = 0;
+    let gameOver = false;
+
+    // Initialize snake: array of {x, y} coordinates. Head is first element.
+    let snake = [
+      {x: 10, y: 10},
+      {x: 9, y: 10},
+      {x: 8, y: 10}
+    ];
+
+
+    // Array of traps (each is an object {x, y})
+    let traps = [];
+
+    // Fruit position
+    let fruit = randomFruit();
+
+
+
+    // Start trap generation: add one trap every 2 seconds.
+    const trapInterval = setInterval(addTrap, 200);
+
+    // Main game loop
+    let gameInterval = setInterval(gameTick, gameSpeed);
+
+    function gameTick() {
+      if (gameOver) return;
+
+      // Determine the next move automatically.
+      const nextDir = decideNextMove();
+
+      if (!nextDir) {
+        endGame("No safe moves found.");
+        return;
+      }
+
+      // Calculate new head position.
+      const head = snake[0];
+      const newHead = { x: head.x + nextDir.dx, y: head.y + nextDir.dy };
+
+      // Check collision with walls or self.
+      if (isCollision(newHead)) {
+        endGame("Collision detected.");
+        return;
+      }
+
+      // Add new head.
+      snake.unshift(newHead);
+
+      // Check if fruit is eaten.
+      if (newHead.x === fruit.x && newHead.y === fruit.y) {
+        score++;
+        fruit = randomFruit();
+      } else {
+        // Remove tail (normal movement).
+        snake.pop();
+      }
+
+      // Check if snake head hits a trap.
+      let trapIndex = traps.findIndex(trap => trap.x === newHead.x && trap.y === newHead.y);
+      if (trapIndex !== -1) {
+        trapCount++;
+        traps.splice(trapIndex, 1);
+        // If the snake's length is 1 when hit, it's game over.
+        if (snake.length === 1) {
+          endGame("Snake too short after cut!");
+          return;
+        }
+        // Cut the snake in half (keep the head and half of the body).
+        let newLength = Math.ceil(snake.length / 2);
+        snake = snake.slice(0, newLength);
+      }
+
+      drawGame();
+    }
+
+    // End the game, display a message, and clear intervals.
+    function endGame(message) {
+      console.log(message);
+      gameOver = true;
+      clearInterval(gameInterval);
+      clearInterval(trapInterval);
+      drawGame();  // Final drawing including GAME OVER message.
+    }
+
+    // Decide next move using a BFS pathfinder to the fruit.
+    // The pathfinder now treats the entire snake body as an obstacle.
+    // If a path exists, return the first direction step along that path.
+    // Otherwise, choose any safe move.
+    function decideNextMove() {
+      const path = findPath(snake[0], fruit, snake);
+      if (path && path.length >= 2) {
+        // Determine the direction from the head to the second cell in the path.
+        const head = path[0];
+        const nextCell = path[1];
+        const dx = nextCell.x - head.x;
+        const dy = nextCell.y - head.y;
+        for (const key in directions) {
+          if (directions[key].dx === dx && directions[key].dy === dy) {
+            return directions[key];
+          }
+        }
+      }
+      // If no path found, try any safe move.
+      for (const key in directions) {
+        const dir = directions[key];
+        const candidate = { x: snake[0].x + dir.dx, y: snake[0].y + dir.dy };
+        if (!isCollision(candidate)) {
+          return dir;
+        }
+      }
+      return null;
+    }
+
+    // Breadth-First Search (BFS) to find a shortest path from start to goal avoiding obstacles.
+    // Obstacles: the entire snake body and traps.
+    function findPath(start, goal, snakeBody) {
+      const queue = [];
+      const visited = new Array(rows).fill(null).map(() => new Array(cols).fill(false));
+      const prev = new Array(rows).fill(null).map(() => new Array(cols).fill(null));
+
+      // Create a set representing obstacles.
+      const obstacles = new Set();
+      // Mark every snake cell as an obstacle.
+      for (let i = 0; i < snakeBody.length; i++) {
+        obstacles.add(`${snakeBody[i].x},${snakeBody[i].y}`);
+      }
+      // Also add traps as obstacles.
+      traps.forEach(trap => obstacles.add(`${trap.x},${trap.y}`));
+
+      queue.push(start);
+      visited[start.y][start.x] = true;
+
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (current.x === goal.x && current.y === goal.y) {
+          // Found the goal; reconstruct path.
+          const path = [];
+          let temp = current;
+          while (temp) {
+            path.push(temp);
+            temp = prev[temp.y][temp.x];
+          }
+          path.reverse();
+          return path;
+        }
+
+        // Explore neighbors.
+        for (const key in directions) {
+          const dir = directions[key];
+          const neighbor = { x: current.x + dir.dx, y: current.y + dir.dy };
+          if (neighbor.x < 0 || neighbor.x >= cols || neighbor.y < 0 || neighbor.y >= rows)
+            continue;
+          if (visited[neighbor.y][neighbor.x])
+            continue;
+          if (obstacles.has(`${neighbor.x},${neighbor.y}`))
+            continue;
+          visited[neighbor.y][neighbor.x] = true;
+          prev[neighbor.y][neighbor.x] = current;
+          queue.push(neighbor);
+        }
+      }
+      // No path found.
+      return null;
+    }
+
+    // Check if a position collides with the snake's body or is out of bounds.
+    // (Traps are handled separately.)
+    function isCollision(pos) {
+      if (pos.x < 0 || pos.x >= cols || pos.y < 0 || pos.y >= rows) {
+        return true;
+      }
+      // Check if it collides with any part of the snake.
+      for (const cell of snake) {
+        if (cell.x === pos.x && cell.y === pos.y) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Randomly place fruit on an empty cell.
+    function randomFruit() {
+      let valid = false;
+      let pos;
+      while (!valid) {
+        pos = {
+          x: Math.floor(Math.random() * cols),
+          y: Math.floor(Math.random() * rows)
+        };
+        valid = true;
+        // Ensure fruit does not spawn on the snake.
+        for (const cell of snake) {
+          if (cell.x === pos.x && cell.y === pos.y) {
+            valid = false;
+            break;
+          }
+        }
+        // Ensure fruit does not spawn on a trap.
+        if (valid) {
+          for (const trap of traps) {
+            if (trap.x === pos.x && trap.y === pos.y) {
+              valid = false;
+              break;
+            }
+          }
+        }
+      }
+      return pos;
+    }
+
+    // Add a trap at a random empty cell.
+    function addTrap() {
+      let valid = false;
+      let pos;
+      while (!valid) {
+        pos = {
+          x: Math.floor(Math.random() * cols),
+          y: Math.floor(Math.random() * rows)
+        };
+        valid = true;
+        // Check that the position is not occupied by the snake, fruit, or another trap.
+        for (const cell of snake) {
+          if (cell.x === pos.x && cell.y === pos.y) {
+            valid = false;
+            break;
+          }
+        }
+        if (valid && fruit.x === pos.x && fruit.y === pos.y) {
+          valid = false;
+        }
+        if (valid) {
+          for (const trap of traps) {
+            if (trap.x === pos.x && trap.y === pos.y) {
+              valid = false;
+              break;
+            }
+          }
+        }
+      }
+      traps.push(pos);
+    }
+
+    // Draw the game state.
+    function drawGame() {
+      // Clear canvas.
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw fruit.
+      ctx.fillStyle = 'red';
+      ctx.fillRect(fruit.x * cellSize, fruit.y * cellSize, cellSize, cellSize);
+
+      // Draw traps.
+      ctx.fillStyle = 'purple';
+      traps.forEach(trap => {
+        ctx.fillRect(trap.x * cellSize, trap.y * cellSize, cellSize, cellSize);
+      });
+
+      // Draw snake.
+      for (let i = 0; i < snake.length; i++) {
+        ctx.fillStyle = (i === 0) ? 'lime' : 'green';
+        ctx.fillRect(snake[i].x * cellSize, snake[i].y * cellSize, cellSize, cellSize);
+      }
+
+      // Draw score and trap count.
+      ctx.fillStyle = 'white';
+      ctx.font = '16px sans-serif';
+      ctx.fillText(`Score: ${score}`, 10, 20);
+      ctx.fillText(`Traps Hit: ${trapCount}`, 10, 40);
+
+      // If game over, display GAME OVER text.
+      if (gameOver) {
+        ctx.fillStyle = 'white';
+        ctx.font = '48px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+      }
+    }
+
+    // Initial draw.
+    drawGame();
+  </script>
+</body>
+</html>

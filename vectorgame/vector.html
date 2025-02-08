@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>2D Random Circular Vector Race Game with Fixed Start/Finish and Track Editor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f2f2f2;
+      margin: 0;
+      padding: 0;
+    }
+    /* Container for sidebar and canvas */
+    #container {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      margin: 20px;
+    }
+    /* Sidebar with player info, game buttons, and track editor */
+    #sidebar {
+      width: 240px;
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-right: 20px;
+      border-radius: 4px;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    }
+    #sidebar h3 {
+      margin-top: 0;
+      text-align: center;
+    }
+    .playerEntry {
+      margin: 5px 0;
+    }
+    .playerEntry input {
+      width: 200px;
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+      background: #007BFF;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    canvas {
+      background: #fff;
+      border: 1px solid #333;
+      border-radius: 4px;
+    }
+    /* Win overlay modal */
+    #winOverlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      z-index: 1000;
+    }
+    #winModal {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 2px 2px 10px rgba(0,0,0,0.3);
+    }
+    #winModal h2 {
+      margin: 0 0 20px;
+    }
+    /* Track editor panel styles */
+    #trackEditorPanel {
+      display: none;
+      margin-top: 10px;
+      border-top: 1px solid #ccc;
+      padding-top: 10px;
+    }
+    #trackEditorPanel h4 {
+      margin: 5px 0;
+      text-align: center;
+    }
+    #trackEditorPanel label {
+      font-size: 13px;
+    }
+    #trackEditorPanel input[type="range"] {
+      width: 100%;
+    }
+    #trackEditorPanel div {
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <!-- Sidebar with player info, game buttons, and track editor -->
+    <div id="sidebar">
+      <h3>Players</h3>
+      <div id="playerInfo"></div>
+      <button id="btnAddPlayer">Add Player</button>
+      <button id="btnRandomTrack">New Track</button>
+      <button id="btnToggleTrackEditor">Open Track Editor</button>
+      <div id="trackEditorPanel">
+        <h4>Track Editor</h4>
+        <label for="sliderCellSize">Cell Size: <span id="cellSizeValue">20</span></label>
+        <input type="range" id="sliderCellSize" min="10" max="50" value="20">
+        <div>
+          <label>
+            <input type="radio" name="drawMode" value="road" checked> Draw Road
+          </label>
+          <label>
+            <input type="radio" name="drawMode" value="offroad"> Draw Off-Road
+          </label>
+        </div>
+      </div>
+    </div>
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+  </div>
+
+  <!-- Win overlay modal -->
+  <div id="winOverlay">
+    <div id="winModal">
+      <h2 id="winMessage">Player X wins!</h2>
+      <button id="restartButton">Restart Game</button>
+    </div>
+  </div>
+  
+  <script>
+    /**************************************
+     * Global Variables and Configuration *
+     **************************************/
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Global cell size (modifiable by the track editor slider)
+    let cellSize = 10;
+    let gridWidth = Math.floor(canvas.width / cellSize);
+    let gridHeight = Math.floor(canvas.height / cellSize);
+
+    // Global game state.
+    let track = [];      // 2D array: true = road (on-track), false = off-road.
+    let players = [];    // Array of player objects.
+    let currentPlayerIndex = 0;
+    let possibleMoves = []; // Array of possible moves for the current player.
+    let gameOver = false;
+
+    // Player colors.
+    const playerColors = ["red", "blue", "green", "orange"];
+
+    // For our (circular) track we still compute a random shape—but then we overlay a fixed start/finish area.
+    let trackCenter = { x: 0, y: 0 };
+
+    // The fixed start/finish region will always be 3 columns wide and 8 rows tall.
+    function getStartFinishArea() {
+      const regionWidth = 3;
+      const regionHeight = 8;
+      // Position the region at the bottom center of the grid.
+      const startRow = gridHeight - regionHeight-1;
+      const startCol = Math.floor((gridWidth - regionWidth) / 2);
+      return { startRow, startCol, regionWidth, regionHeight };
+    }
+
+    // Utility: returns true if a given cell (x,y) lies within the fixed start/finish area.
+    function inStartFinishArea(x, y) {
+      const area = getStartFinishArea();
+      return (
+        x >= area.startCol &&
+        x < area.startCol + area.regionWidth &&
+        y >= area.startRow &&
+        y < area.startRow + area.regionHeight
+      );
+    }
+
+    /**************************************
+     * Utility Functions                  *
+     **************************************/
+    // Convert a simple color name to an rgba string with desired opacity.
+    function colorToRGBA(color, alpha) {
+      const mapping = {
+        red: "255,0,0",
+        blue: "0,0,255",
+        green: "0,128,0",
+        orange: "255,165,0"
+      };
+      if (mapping[color]) {
+        return "rgba(" + mapping[color] + "," + alpha + ")";
+      }
+      return color;
+    }
+
+    // Bresenham algorithm: return all cells in a line from (x0,y0) to (x1,y1)
+    function getLineCells(x0, y0, x1, y1) {
+      const cells = [];
+      let dx = Math.abs(x1 - x0);
+      let dy = Math.abs(y1 - y0);
+      let sx = (x0 < x1) ? 1 : -1;
+      let sy = (y0 < y1) ? 1 : -1;
+      let err = dx - dy;
+      let x = x0, y = y0;
+      while (true) {
+        cells.push({ x: x, y: y });
+        if (x === x1 && y === y1) break;
+        let e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx) { err += dx; y += sy; }
+      }
+      return cells;
+    }
+
+    /**************************************
+     * Track Generation Functions         *
+     **************************************/
+    // Generate a circular (ring‑shaped) track with randomized variation.
+    // Then overlay the fixed start/finish region.
+    function generateCircularTrack() {
+      track = [];
+      // Set the center.
+      trackCenter.x = gridWidth / 2;
+      trackCenter.y = gridHeight / 2;
+      // Base outer radius (as a fraction of the smaller grid dimension).
+      let baseOuter = Math.min(gridWidth, gridHeight) * 0.45;
+      // Track width (in cells).
+      let trackWidth = 5;
+      // Random parameters for smooth variation.
+      const amplitude = 4; // maximum deviation (cells)
+      const freq = 2 + Math.random() * 3;  // frequency between 2 and 7
+      const randomOffset = 0//;Math.random() * 2 * Math.PI;
+      
+      // For each cell, compute its polar coordinates relative to the center.
+      for (let y = 0; y < gridHeight; y++) {
+        track[y] = [];
+        for (let x = 0; x < gridWidth; x++) {
+          const cellCx = x + 0.5;
+          const cellCy = y + 0.5;
+          const dx = cellCx - trackCenter.x;
+          const dy = cellCy - trackCenter.y;
+          const r = Math.sqrt(dx * dx + dy * dy);
+          const angle = Math.atan2(dy, dx);
+          // Compute a dynamic outer radius based on the angle.
+          const dynamicOuter = baseOuter + amplitude * Math.sin(freq * angle + randomOffset);
+          const dynamicInner = dynamicOuter - trackWidth;
+          // Mark cell as road if its distance lies between dynamicInner and dynamicOuter.
+          track[y][x] = (r >= dynamicInner && r <= dynamicOuter);
+        }
+      }
+      // Now force the fixed start/finish area to be road.
+      const area = getStartFinishArea();
+      for (let y = area.startRow; y < area.startRow + area.regionHeight; y++) {
+        for (let x = area.startCol-2; x < area.startCol + area.regionWidth+2; x++) {
+          track[y][x] = true;
+        }
+      }
+    }
+
+    /**************************************
+     * Track Editor: Updating Cell Size   *
+     **************************************/
+    // When the slider changes, update the cellSize and adjust the track array.
+    function updateCellSize(newSize) {
+      const oldCellSize = cellSize;
+      const oldGridWidth = gridWidth;
+      const oldGridHeight = gridHeight;
+      // Update cellSize and recalc grid dimensions.
+      cellSize = newSize;
+      gridWidth = Math.floor(canvas.width / cellSize);
+      gridHeight = Math.floor(canvas.height / cellSize);
+      // Create a new track array with new dimensions.
+      let newTrack = [];
+      for (let y = 0; y < gridHeight; y++) {
+        newTrack[y] = [];
+        for (let x = 0; x < gridWidth; x++) {
+          if (y < oldGridHeight && x < oldGridWidth) {
+            newTrack[y][x] = track[y][x];
+          } else {
+            newTrack[y][x] = false;  // default new cells to off-road
+          }
+        }
+      }
+      track = newTrack;
+      // Recalculate track center.
+      trackCenter.x = gridWidth / 2;
+      trackCenter.y = gridHeight / 2;
+    }
+
+    /**************************************
+     * Player and Game Setup              *
+     **************************************/
+    // Place players inside the fixed start/finish area.
+    // They will be aligned in the center column of that area and arranged vertically
+    // (with one empty cell between them, which fits up to 4 players in an 8‑row block).
+    function initPlayers(numPlayers = 2) {
+      players = [];
+      const area = getStartFinishArea();
+      // Use the middle column of the fixed area.
+      const startX = area.startCol + Math.floor(area.regionWidth / 2);
+      for (let i = 0; i < numPlayers; i++) {
+        // Place the first player at the bottom row of the area, then one every two rows above.
+        const startY = area.startRow + area.regionHeight - 1 - i * 2;
+        players.push({
+          name: "Player " + (i + 1),
+          color: playerColors[i],
+          x: startX,
+          y: startY,
+          vx: 0,
+          vy: 0,
+          lastValid: { x: startX, y: startY },
+          history: [],
+          hasLeftStart: false  // used for win detection
+        });
+      }
+      currentPlayerIndex = 0;
+      gameOver = false;
+      updatePlayerInfo();
+    }
+
+    // Reset player positions (keeping names) and clear movement histories.
+    function resetPlayersPositions() {
+      const numPlayers = players.length;
+      const area = getStartFinishArea();
+      const startX = area.startCol + Math.floor(area.regionWidth / 2);
+      for (let i = 0; i < numPlayers; i++) {
+        const startY = area.startRow + area.regionHeight - 1 - i * 2;
+        players[i].x = startX;
+        players[i].y = startY;
+        players[i].vx = 0;
+        players[i].vy = 0;
+        players[i].lastValid = { x: startX, y: startY };
+        players[i].history = [];
+        players[i].hasLeftStart = false;
+      }
+      currentPlayerIndex = 0;
+      gameOver = false;
+      updatePlayerInfo();
+    }
+
+    // Update the players info UI in the sidebar.
+    function updatePlayerInfo() {
+      const div = document.getElementById('playerInfo');
+      div.innerHTML = "";
+      players.forEach((player, index) => {
+        const entry = document.createElement("div");
+        entry.className = "playerEntry";
+        entry.style.color = player.color;
+        entry.style.fontWeight = (index === currentPlayerIndex) ? "bold" : "normal";
+        const input = document.createElement("input");
+        input.value = player.name;
+        input.addEventListener("change", function() {
+          player.name = input.value;
+        });
+        entry.appendChild(input);
+        div.appendChild(entry);
+      });
+    }
+
+    /**************************************
+     * Game Mechanics                     *
+     **************************************/
+    // Calculate all possible moves for a player given the current velocity.
+    // Allowed acceleration in each axis is -1, 0, or 1.
+    function calculatePossibleMoves(player) {
+      const moves = [];
+      for (let ax = -1; ax <= 1; ax++) {
+        for (let ay = -1; ay <= 1; ay++) {
+          const newVx = player.vx + ax;
+          const newVy = player.vy + ay;
+          const newX = player.x + newVx;
+          const newY = player.y + newVy;
+          if (newX >= 0 && newX < gridWidth && newY >= 0 && newY < gridHeight) {
+            moves.push({
+              ax: ax,
+              ay: ay,
+              newVx: newVx,
+              newVy: newVy,
+              newX: newX,
+              newY: newY
+            });
+          }
+        }
+      }
+      return moves;
+    }
+
+    // Check whether the straight-line path from (x0,y0) to (x1,y1) stays on road.
+    function checkPathOnTrack(x0, y0, x1, y1) {
+      let dx = Math.abs(x1 - x0);
+      let dy = Math.abs(y1 - y0);
+      let sx = (x0 < x1) ? 1 : -1;
+      let sy = (y0 < y1) ? 1 : -1;
+      let err = dx - dy;
+      let x = x0, y = y0;
+      while (true) {
+        if (!track[y] || !track[y][x]) {
+          return false;
+        }
+        if (x === x1 && y === y1) break;
+        let e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx) { err += dx; y += sy; }
+      }
+      return true;
+    }
+
+    /**************************************
+     * Drawing Functions                  *
+     **************************************/
+    // Draw the movement history for each player.
+    function drawHistory() {
+      players.forEach(player => {
+        player.history.forEach(segment => {
+          // Get all grid cells along the move.
+          const cells = getLineCells(segment.x0, segment.y0, segment.x1, segment.y1);
+          ctx.fillStyle = colorToRGBA(player.color, 0.2);
+          cells.forEach(cell => {
+            ctx.fillRect(cell.x * cellSize, cell.y * cellSize, cellSize, cellSize);
+          });
+          // Draw a dashed line representing the move.
+          ctx.save();
+          ctx.strokeStyle = colorToRGBA(player.color, 0.5);
+          ctx.lineWidth = 2;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo((segment.x0 + 0.5) * cellSize, (segment.y0 + 0.5) * cellSize);
+          ctx.lineTo((segment.x1 + 0.5) * cellSize, (segment.y1 + 0.5) * cellSize);
+          ctx.stroke();
+          ctx.restore();
+        });
+      });
+    }
+
+    // Main draw function.
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // 1. Draw the track.
+      for (let y = 0; y < gridHeight; y++) {
+        for (let x = 0; x < gridWidth; x++) {
+          ctx.fillStyle = track[y][x] ? "#ddd" : "#444";
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+      
+      // 2. Draw the fixed start/finish area as a checkered pattern.
+      const area = getStartFinishArea();
+      for (let y = area.startRow; y < area.startRow + area.regionHeight; y++) {
+        for (let x = area.startCol; x < area.startCol + area.regionWidth; x++) {
+          ctx.fillStyle = ((x + y) % 2 === 0) ? "black" : "white";
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+      
+      // 3. Draw grid lines.
+      ctx.strokeStyle = "#aaa";
+      ctx.lineWidth = 0.5;
+      for (let x = 0; x <= gridWidth; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * cellSize, 0);
+        ctx.lineTo(x * cellSize, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= gridHeight; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * cellSize);
+        ctx.lineTo(canvas.width, y * cellSize);
+        ctx.stroke();
+      }
+      
+      // 4. Draw players’ past movement history.
+      drawHistory();
+      
+      // 5. Highlight the possible moves for the current player.
+      possibleMoves = calculatePossibleMoves(players[currentPlayerIndex]);
+      possibleMoves.forEach(move => {
+        const validPath = checkPathOnTrack(
+          players[currentPlayerIndex].x,
+          players[currentPlayerIndex].y,
+          move.newX,
+          move.newY
+        );
+        if (validPath) {
+          ctx.fillStyle = colorToRGBA(players[currentPlayerIndex].color, 0.3);
+        } else {
+          ctx.fillStyle = "rgba(255,0,0,0.3)";
+        }
+        ctx.fillRect(move.newX * cellSize, move.newY * cellSize, cellSize, cellSize);
+        // Draw a small marker (circle) at the center.
+        ctx.beginPath();
+        ctx.arc((move.newX + 0.5) * cellSize, (move.newY + 0.5) * cellSize, cellSize / 8, 0, Math.PI * 2);
+        ctx.fillStyle = "black";
+        ctx.fill();
+      });
+      
+      // 6. Draw the players (cars) as circles.
+      players.forEach(player => {
+        ctx.fillStyle = player.color;
+        ctx.beginPath();
+        ctx.arc((player.x + 0.5) * cellSize, (player.y + 0.5) * cellSize, cellSize / 3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    /**************************************
+     * Win Overlay and Restart            *
+     **************************************/
+    function showWinOverlay(message) {
+      const overlay = document.getElementById('winOverlay');
+      const winMsg = document.getElementById('winMessage');
+      winMsg.textContent = message;
+      overlay.style.display = "block";
+    }
+    function hideWinOverlay() {
+      document.getElementById('winOverlay').style.display = "none";
+    }
+
+    /**************************************
+     * Handling User Interaction          *
+     **************************************/
+    // --- Continuous Drawing in Editor Mode ---
+    let isDrawing = false;
+    function handleEditorDraw(event) {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+      const gridX = Math.floor(mouseX / cellSize);
+      const gridY = Math.floor(mouseY / cellSize);
+      // Do not allow changes in the fixed start/finish area.
+      if (inStartFinishArea(gridX, gridY)) return;
+      if (gridY >= 0 && gridY < gridHeight && gridX >= 0 && gridX < gridWidth) {
+        if (trackEditorMode === "road") {
+          track[gridY][gridX] = true;
+        } else {
+          track[gridY][gridX] = false;
+        }
+        draw();
+      }
+    }
+    canvas.addEventListener("mousedown", function(event) {
+      if (trackEditorEnabled) {
+        isDrawing = true;
+        handleEditorDraw(event);
+        event.preventDefault();
+      }
+    });
+    canvas.addEventListener("mousemove", function(event) {
+      if (trackEditorEnabled && isDrawing) {
+        handleEditorDraw(event);
+        event.preventDefault();
+      }
+    });
+    canvas.addEventListener("mouseup", function(event) {
+      if (trackEditorEnabled) {
+        isDrawing = false;
+        event.preventDefault();
+      }
+    });
+
+    canvas.addEventListener("click", function(event) {
+      
+      // Otherwise, process game moves.
+      if (gameOver) return;
+      possibleMoves = calculatePossibleMoves(players[currentPlayerIndex]);
+      const rect = canvas.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const clickY = event.clientY - rect.top;
+      const gridX = Math.floor(clickX / cellSize);
+      const gridY = Math.floor(clickY / cellSize);
+      const move = possibleMoves.find(m => m.newX === gridX && m.newY === gridY);
+      if (move) {
+        const player = players[currentPlayerIndex];
+        const oldX = player.x, oldY = player.y;
+        if (checkPathOnTrack(player.x, player.y, move.newX, move.newY)) {
+          player.x = move.newX;
+          player.y = move.newY;
+          player.vx = move.newVx;
+          player.vy = move.newVy;
+          player.lastValid = { x: player.x, y: player.y };
+          player.history.push({ x0: oldX, y0: oldY, x1: player.x, y1: player.y });
+        } else {
+          player.x = player.lastValid.x;
+          player.y = player.lastValid.y;
+          player.vx = 0;
+          player.vy = 0;
+        }
+        // Update player's status:
+        // If the move takes the player outside the fixed start/finish area, mark that they have left.
+        if (!inStartFinishArea(player.x, player.y)) {
+          player.hasLeftStart = true;
+        }
+        // If the player re-enters the start/finish area after having left, they win.
+        else if (inStartFinishArea(player.x, player.y) && player.hasLeftStart) {
+          gameOver = true;
+          showWinOverlay(player.name + " wins!");
+          return;
+        }
+        
+        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+        updatePlayerInfo();
+        draw();
+      }
+    });
+
+    /**************************************
+     * UI Button Event Listeners          *
+     **************************************/
+    document.getElementById("btnAddPlayer").addEventListener("click", function() {
+      if (players.length < 4) {
+        const newPlayer = {
+          name: "Player " + (players.length + 1),
+          color: playerColors[players.length],
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          lastValid: { x: 0, y: 0 },
+          history: [],
+          hasLeftStart: false
+        };
+        players.push(newPlayer);
+        updatePlayerInfo();
+        resetPlayersPositions();
+        draw();
+        if (players.length === 4) {
+          this.style.display = "none";
+        }
+      }
+    });
+
+    document.getElementById("btnRandomTrack").addEventListener("click", function() {
+      generateCircularTrack();
+      resetPlayersPositions();
+      draw();
+    });
+
+    document.getElementById("restartButton").addEventListener("click", function() {
+      hideWinOverlay();
+      generateCircularTrack();
+      resetPlayersPositions();
+      draw();
+    });
+
+    // Toggle the track editor panel.
+    let trackEditorEnabled = false;
+    let trackEditorMode = "road";  // either "road" or "offroad"
+    document.getElementById("btnToggleTrackEditor").addEventListener("click", function() {
+      trackEditorEnabled = !trackEditorEnabled;
+      const panel = document.getElementById("trackEditorPanel");
+      if (trackEditorEnabled) {
+        panel.style.display = "block";
+        this.textContent = "Close Track Editor";
+      } else {
+        panel.style.display = "none";
+        this.textContent = "Open Track Editor";
+      }
+    });
+
+    // Handle cellSize slider changes.
+    document.getElementById("sliderCellSize").addEventListener("input", function() {
+      const newSize = parseInt(this.value, 10);
+      document.getElementById("cellSizeValue").textContent = newSize;
+      updateCellSize(newSize);
+      draw();
+    });
+
+    // Handle radio button changes for draw mode.
+    const drawModeRadios = document.getElementsByName("drawMode");
+    for (let i = 0; i < drawModeRadios.length; i++) {
+      drawModeRadios[i].addEventListener("change", function() {
+        trackEditorMode = this.value;
+      });
+    }
+
+    /**************************************
+     * Game Initialization              *
+     **************************************/
+    function initGame() {
+      generateCircularTrack();
+      initPlayers(2);
+      draw();
+    }
+    
+    // Start the game.
+    initGame();
+  </script>
+</body>
+</html>
