@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Simple Mario-like Game Experiment (Collision Fix)</title>
+  <style>
+    body { text-align: center; font-family: sans-serif; }
+    canvas {
+      border: 1px solid #000;
+      background: #87CEEB;
+      display: block;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Simple Mario-like Game Experiment (Collision Fix)</h1>
+  <canvas id="gameCanvas" width="640" height="480"></canvas>
+  <script>
+    // Get canvas and context.
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // --- Configuration & Constants ---
+    const tileSize = 32;
+    const gravity = 0.5;
+
+    // Tile types.
+    const TILE_EMPTY     = 0;  // nothing here.
+    const TILE_BLOCK     = 1;  // solid block (collides on all sides).
+    const TILE_ONEWAY    = 2;  // platform: solid only when falling down from above.
+    const TILE_LADDER    = 3;  // ladder tile: allows climbing.
+    const TILE_EXPLOSIVE = 4;  // block that “explodes” (disappears) when hit from below.
+    const TILE_COIN      = 5;  // coin (collected on contact).
+
+    // Colors for drawing tiles.
+    const tileColors = {
+      [TILE_BLOCK]: "#654321",
+      [TILE_ONEWAY]: "#A0522D",
+      [TILE_LADDER]: "#DEB887",
+      [TILE_EXPLOSIVE]: "#FF0000",
+      [TILE_COIN]: "#FFD700"
+    };
+
+    // --- Level Definition ---
+    // A 15x20 grid (rows run top-to-bottom).
+    let level = [
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,5,0,0,0,0,0,0,0,5,0,0,0,0,0,0],
+        [0,0,0,0,0,2,2,2,2,2,2,2,2,2,0,0,0,0,0,0],
+        [1,1,4,4,1,1,1,1,1,1,1,1,1,1,1,1,1,4,1,1],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0],
+        [1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,5,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ];
+
+    // --- Game Objects ---
+    // The player object.
+    let player = {
+      x: 50,
+      y: 300,
+      width: 28,
+      height: 28,
+      vx: 0,
+      vy: 0,
+      onGround: false,
+      hearts: 3,
+      coins: 0,
+      invuln: 0  // frames of invulnerability after taking damage.
+    };
+
+    // One enemy that “patrols” (with reduced speed).
+    let enemies = [
+      { x: 300, y: 300, width: 28, height: 28, vx: 0.5, vy: 0 }
+    ];
+
+    // --- Input Handling ---
+    let keys = {};
+    document.addEventListener("keydown", function(e) {
+      keys[e.key] = true;
+    });
+    document.addEventListener("keyup", function(e) {
+      keys[e.key] = false;
+    });
+
+    // --- Utility Functions ---
+    // Simple rectangle intersection check.
+    function rectIntersect(a, b) {
+      return !(b.x > a.x + a.width ||
+               b.x + b.width < a.x ||
+               b.y > a.y + a.height ||
+               b.y + b.height < a.y);
+    }
+
+    // Checks if any tile overlapped by the entity is a ladder.
+    function onLadder(entity) {
+      let startRow = Math.floor(entity.y / tileSize);
+      let endRow = Math.floor((entity.y + entity.height - 1) / tileSize);
+      let startCol = Math.floor(entity.x / tileSize);
+      let endCol = Math.floor((entity.x + entity.width - 1) / tileSize);
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          if (level[row] && level[row][col] === TILE_LADDER) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    // --- Collision Handling ---
+    // Adjusted horizontal collision: we subtract 1 pixel when determining the bottom row.
+    function horizontalCollision(entity) {
+      let startRow = Math.floor(entity.y / tileSize);
+      let endRow = Math.floor((entity.y + entity.height - 1) / tileSize);
+      if (entity.vx > 0) {
+        let right = entity.x + entity.width;
+        let col = Math.floor(right / tileSize);
+        for (let row = startRow; row <= endRow; row++) {
+          if (level[row] && level[row][col] !== undefined) {
+            let tile = level[row][col];
+            if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+              let tileX = col * tileSize;
+              if (right > tileX) {
+                entity.x = tileX - entity.width;
+                entity.vx = 0;
+                entity.onGround = true;
+              }
+            }
+          }
+        }
+      } else if (entity.vx < 0) {
+        let col = Math.floor(entity.x / tileSize);
+        for (let row = startRow; row <= endRow; row++) {
+          if (level[row] && level[row][col] !== undefined) {
+            let tile = level[row][col];
+            if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+              let tileX = col * tileSize + tileSize;
+              if (entity.x < tileX) {
+                entity.x = tileX;
+                entity.vx = 0;
+                entity.onGround = true;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Adjusted vertical collision: we subtract 1 pixel when determining the rightmost column.
+    function verticalCollision(entity) {
+      let startCol = Math.floor(entity.x / tileSize);
+      let endCol = Math.floor((entity.x + entity.width - 1) / tileSize);
+      if (entity.vy > 0) { // falling down.
+        let bottom = entity.y + entity.height;
+        let row = Math.floor(bottom / tileSize);
+        for (let col = startCol; col <= endCol; col++) {
+          if (level[row] && level[row][col] !== undefined) {
+            let tile = level[row][col];
+            // For one-way platforms, only "land" if coming from above.
+            if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE || tile === TILE_ONEWAY) {
+              let tileY = row * tileSize;
+              if (bottom > tileY && (tile !== TILE_ONEWAY || (entity.y + entity.height - entity.vy) <= tileY + 5)) {
+                entity.y = tileY - entity.height;
+                entity.vy = 0;
+                entity.onGround = true;
+              }
+            }
+          }
+        }
+      } else if (entity.vy < 0) { // jumping up.
+        let row = Math.floor(entity.y / tileSize);
+        for (let col = startCol; col <= endCol; col++) {
+          if (level[row] && level[row][col] !== undefined) {
+            let tile = level[row][col];
+            if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+              let tileY = row * tileSize + tileSize;
+              if (entity.y < tileY) {
+                entity.y = tileY;
+                entity.vy = 0;
+                // Explosive blocks vanish when hit from below.
+                if (tile === TILE_EXPLOSIVE) {
+                  level[row][col] = TILE_EMPTY;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // --- Player Update ---
+    function updatePlayer() {
+      // Reset "on ground" flag for this frame.
+      //player.onGround = false;
+
+      // Horizontal movement: left/right keys.
+      if (keys["ArrowLeft"]) {
+        player.vx = -3;
+      } else if (keys["ArrowRight"]) {
+        player.vx = 3;
+      } else {
+        // Apply friction.
+        player.vx *= 0.8;
+        if (Math.abs(player.vx) < 0.1) player.vx = 0;
+      }
+
+      // Vertical movement: if on a ladder, climb; otherwise jump & gravity.
+      if (onLadder(player)) {
+        if (keys["ArrowUp"]) {
+          player.vy = -2;
+        } else if (keys["ArrowDown"]) {
+          player.vy = 2;
+        } else {
+          player.vy = 0;
+        }
+      } else {
+        // Jump (only if on the ground).
+        if (keys["ArrowUp"] && player.onGround) {
+          player.vy = -8;
+          player.onGround = false;
+        }
+        // Apply gravity.
+        player.vy += gravity;
+      }
+
+      // Update position and resolve collisions.
+      player.x += player.vx;
+      horizontalCollision(player);
+      player.y += player.vy;
+      verticalCollision(player);
+
+      // Check for coin collection.
+      collectCoins(player);
+
+      // Count down the invulnerability timer.
+      if (player.invuln > 0) {
+        player.invuln--;
+      }
+    }
+
+    // Check if any coin tile is touched and "collect" it.
+    function collectCoins(entity) {
+      let startRow = Math.floor(entity.y / tileSize);
+      let endRow = Math.floor((entity.y + entity.height - 1) / tileSize);
+      let startCol = Math.floor(entity.x / tileSize);
+      let endCol = Math.floor((entity.x + entity.width - 1) / tileSize);
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          if (level[row] && level[row][col] === TILE_COIN) {
+            level[row][col] = TILE_EMPTY;
+            entity.coins++;
+          }
+        }
+      }
+    }
+
+    // --- Enemy Update ---
+    function updateEnemies() {
+      enemies.forEach(function(enemy) {
+        // Move horizontally.
+        enemy.x += enemy.vx;
+        let startRow = Math.floor(enemy.y / tileSize);
+        let endRow = Math.floor((enemy.y + enemy.height - 1) / tileSize);
+        if (enemy.vx > 0) {
+          let right = enemy.x + enemy.width;
+          let col = Math.floor(right / tileSize);
+          for (let row = startRow; row <= endRow; row++) {
+            if (level[row] && level[row][col] !== undefined) {
+              let tile = level[row][col];
+              if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+                enemy.x = col * tileSize - enemy.width;
+                enemy.vx *= -1;
+                break;
+              }
+            }
+          }
+        } else if (enemy.vx < 0) {
+          let col = Math.floor(enemy.x / tileSize);
+          for (let row = startRow; row <= endRow; row++) {
+            if (level[row] && level[row][col] !== undefined) {
+              let tile = level[row][col];
+              if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+                enemy.x = (col + 1) * tileSize;
+                enemy.vx *= -1;
+                break;
+              }
+            }
+          }
+        }
+        // Gravity for enemy.
+        enemy.vy += gravity;
+        enemy.y += enemy.vy;
+        let startCol = Math.floor(enemy.x / tileSize);
+        let endCol = Math.floor((enemy.x + enemy.width - 1) / tileSize);
+        if (enemy.vy > 0) {
+          let bottom = enemy.y + enemy.height;
+          let row = Math.floor(bottom / tileSize);
+          for (let col = startCol; col <= endCol; col++) {
+            if (level[row] && level[row][col] !== undefined) {
+              let tile = level[row][col];
+              if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE || tile === TILE_ONEWAY) {
+                let tileY = row * tileSize;
+                if (bottom > tileY && (tile !== TILE_ONEWAY || (enemy.y + enemy.height - enemy.vy) <= tileY + 5)) {
+                  enemy.y = tileY - enemy.height;
+                  enemy.vy = 0;
+                }
+              }
+            }
+          }
+        } else if (enemy.vy < 0) {
+          let row = Math.floor(enemy.y / tileSize);
+          for (let col = startCol; col <= endCol; col++) {
+            if (level[row] && level[row][col] !== undefined) {
+              let tile = level[row][col];
+              if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+                let tileY = row * tileSize + tileSize;
+                if (enemy.y < tileY) {
+                  enemy.y = tileY;
+                  enemy.vy = 0;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // --- Check for Player-Enemy Collisions ---
+    function checkPlayerEnemyCollisions() {
+      enemies.forEach(function(enemy) {
+        if (rectIntersect(player, enemy)) {
+          if (player.invuln <= 0) {
+            player.hearts--;
+            player.invuln = 60; // about one second at 60fps.
+          }
+        }
+      });
+    }
+
+    // --- Main Game Update & Draw ---
+    let gameRunning = true;
+    function update() {
+      if (!gameRunning) return;
+      updatePlayer();
+      updateEnemies();
+      checkPlayerEnemyCollisions();
+
+      // If the player falls off the bottom or loses all hearts, end the game.
+      if (player.y > canvas.height || player.hearts <= 0) {
+        gameRunning = false;
+        setTimeout(function() {
+          alert("Game Over!");
+          resetGame();
+        }, 100);
+      }
+    }
+
+    function draw() {
+      // Clear the canvas.
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw the level tiles.
+      for (let row = 0; row < level.length; row++) {
+        for (let col = 0; col < level[row].length; col++) {
+          let tile = level[row][col];
+          if (tile !== TILE_EMPTY) {
+            ctx.fillStyle = tileColors[tile] || "#000";
+            ctx.fillRect(col * tileSize, row * tileSize, tileSize, tileSize);
+            // For ladder tiles, add a visual stripe.
+            if (tile === TILE_LADDER) {
+              ctx.strokeStyle = "#8B4513";
+              ctx.beginPath();
+              ctx.moveTo(col * tileSize + tileSize/4, row * tileSize);
+              ctx.lineTo(col * tileSize + tileSize/4, row * tileSize + tileSize);
+              ctx.moveTo(col * tileSize + 3*tileSize/4, row * tileSize);
+              ctx.lineTo(col * tileSize + 3*tileSize/4, row * tileSize + tileSize);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+
+      // Draw the player.
+      ctx.fillStyle = "blue";
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+
+      // Draw the enemy(ies).
+      ctx.fillStyle = "green";
+      enemies.forEach(function(enemy) {
+        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+      });
+
+      // Draw the UI (hearts and coins).
+      ctx.fillStyle = "black";
+      ctx.font = "20px Arial";
+      ctx.fillText("Hearts: " + player.hearts, 10, 20);
+      ctx.fillText("Coins: " + player.coins, 10, 40);
+    }
+
+    // Main game loop.
+    function gameLoop() {
+      update();
+      draw();
+      if (gameRunning) {
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+    // --- Reset / Restart Game ---
+    function resetGame() {
+      // Reset player state.
+      player.x = 50;
+      player.y = 300;
+      player.vx = 0;
+      player.vy = 0;
+      player.hearts = 3;
+      player.coins = 0;
+      player.invuln = 0;
+      // Reset level.
+      level = [
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,5,0,0,0,0,0,0,0,5,0,0,0,0,0,0],
+        [0,0,0,0,0,2,2,2,2,2,2,2,2,2,0,0,0,0,0,0],
+        [1,1,4,4,1,1,1,1,1,1,1,1,1,1,1,1,1,4,1,1],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0],
+        [1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,0,5,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+      ];
+      // Reset enemy(ies).
+      enemies = [
+        { x: 300, y: 300, width: 28, height: 28, vx: 0.5, vy: 0 }
+      ];
+      gameRunning = true;
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start the game.
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
