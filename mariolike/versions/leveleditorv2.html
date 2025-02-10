@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Mario-like Game with Scrolling & Level Editor</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; }
+    canvas {
+      border: 1px solid #000;
+      background: #87CEEB;
+      display: block;
+      margin: 0 auto;
+    }
+    .hidden { display: none; }
+    #controls { margin-bottom: 10px; }
+    #exportOutput { width: 90%; }
+  </style>
+</head>
+<body>
+  <h1>Mario-like Game with Scrolling & Level Editor</h1>
+
+  <!-- Editor Controls (visible in editor mode) -->
+  <div id="editorUI">
+    <div id="controls">
+      <label for="tileSelector">Select Tile: </label>
+      <select id="tileSelector">
+        <option value="0">Empty</option>
+        <option value="1">Block (Solid)</option>
+        <option value="2">Platform (One-way)</option>
+        <option value="3">Ladder</option>
+        <option value="4">Explosive</option>
+        <option value="5">Coin</option>
+      </select>
+      &nbsp;&nbsp;
+      <label for="colInput">Columns:</label>
+      <input id="colInput" type="number" value="70" min="10">
+      &nbsp;&nbsp;
+      <button id="clearButton">Clear &amp; Resize</button>
+      <button id="exportButton">Export Level</button>
+      <button id="playButton">Play Game</button>
+    </div>
+    <textarea id="exportOutput" rows="5" readonly placeholder="Exported level object will appear here..."></textarea>
+    <p>
+      In Editor Mode, use the <strong>arrow keys</strong> to pan the view.
+    </p>
+  </div>
+
+  <!-- Game Controls (visible in game mode) -->
+  <div id="gameUI" class="hidden">
+    <button id="backToEditorButton">Back to Editor</button>
+  </div>
+
+  <!-- The single canvas is used for both Editor and Game modes -->
+  <canvas id="gameCanvas" width="640" height="480"></canvas>
+
+  <script>
+    /**********************************
+     * Global Settings & Declarations *
+     **********************************/
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // Tile settings.
+    const tileSize = 32;
+    const rows = 15; // Fixed vertical size
+    let levelColumns = 70; // Default horizontal size (can be adjusted via input)
+    const gravity = 0.5;
+
+    // Tile type constants.
+    const TILE_EMPTY     = 0;  // nothing
+    const TILE_BLOCK     = 1;  // solid block (collides on all sides)
+    const TILE_ONEWAY    = 2;  // platform: solid when falling onto from above
+    const TILE_LADDER    = 3;  // ladder: allows climbing
+    const TILE_EXPLOSIVE = 4;  // explosive block (vanishes when hit from below)
+    const TILE_COIN      = 5;  // coin (collected on contact)
+
+    // Colors for drawing tiles.
+    const tileColors = {
+      [TILE_BLOCK]: "#654321",
+      [TILE_ONEWAY]: "#A0522D",
+      [TILE_LADDER]: "#DEB887",
+      [TILE_EXPLOSIVE]: "#FF0000",
+      [TILE_COIN]: "#FFD700"
+    };
+
+    // Preload images for each tile type.
+    // Load the spritesheet image (make sure the path is correct)
+    const spriteSheet = new Image();
+    spriteSheet.src = "images/tiles2.png";
+
+    // Define the source offsets (and optionally source width/height) for each tile type.
+    // For example, if your spritesheet contains tiles of 32x32 pixels arranged in a row:
+    const tileSprites = {
+    [TILE_BLOCK]:     { x: 0,   y: 0, width: 32, height: 32 },
+    [TILE_ONEWAY]:    { x: 32,  y: 0, width: 32, height: 32 },
+    [TILE_LADDER]:    { x: 64,  y: 0, width: 32, height: 32 },
+    [TILE_EXPLOSIVE]: { x: 0,  y: 32, width: 32, height: 32 },
+    [TILE_COIN]:      { x: 96, y: 0, width: 32, height: 32 }
+    };
+
+    // Modes: "editor" or "game"
+    let mode = "editor";
+
+    // The level data used by the editor (and later the game).
+    // This will be a 2D array of numbers.
+    let editorLevel = [
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,0,0,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,1,4,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,1,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,1,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,1,4,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,1,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,1,1,1,1,1,1,1,1,4,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,0,0,5,0,5,0,5,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,0,2,2,4,4,4,4,4,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+    //initEditorLevel();
+
+    // In game mode the level is a copy of editorLevel.
+    let level = [];
+
+    // Global camera object (in pixels). Used by both editor and game modes.
+    let camera = { x: 0, y: 0 };
+
+    // Global keyboard state.
+    let keys = {};
+
+    /***********************
+     * Level Editor Module *
+     ***********************/
+    // Initializes the editor level. The bottom row is set to TILE_BLOCK as a floor.
+    function initEditorLevel() {
+      editorLevel = [];
+      for (let r = 0; r < rows; r++) {
+        let rowArr = [];
+        for (let c = 0; c < levelColumns; c++) {
+          // If this is the bottom row, set it as a floor.
+          if (r === rows - 1) {
+            rowArr.push(TILE_BLOCK);
+          } else {
+            rowArr.push(TILE_EMPTY);
+          }
+        }
+        editorLevel.push(rowArr);
+      }
+    }
+
+    // Update the editor camera (pan) using arrow keys.
+    function updateEditorCamera() {
+      if (keys["ArrowLeft"]) {
+        camera.x -= 10;
+      }
+      if (keys["ArrowRight"]) {
+        camera.x += 10;
+      }
+      if (keys["ArrowUp"]) {
+        camera.y -= 10;
+      }
+      if (keys["ArrowDown"]) {
+        camera.y += 10;
+      }
+      // Clamp camera to level bounds.
+      const levelWidth = levelColumns * tileSize;
+      const levelHeight = rows * tileSize;
+      if (camera.x < 0) camera.x = 0;
+      if (camera.y < 0) camera.y = 0;
+      if (camera.x > levelWidth - canvas.width) camera.x = levelWidth - canvas.width;
+      if (camera.y > levelHeight - canvas.height) camera.y = levelHeight - canvas.height;
+    }
+
+    // Draw the editor grid, tiles, and grid lines.
+    function drawEditor() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(-camera.x, -camera.y);
+
+      // Draw each tile.
+      drawRoutine(editorLevel,ctx);
+      
+      // Draw grid lines.
+      ctx.strokeStyle = "#000";
+      // Vertical grid lines.
+      for (let c = 0; c <= levelColumns; c++) {
+        ctx.beginPath();
+        ctx.moveTo(c * tileSize, 0);
+        ctx.lineTo(c * tileSize, rows * tileSize);
+        ctx.stroke();
+      }
+      // Horizontal grid lines.
+      for (let r = 0; r <= rows; r++) {
+        ctx.beginPath();
+        ctx.moveTo(0, r * tileSize);
+        ctx.lineTo(levelColumns * tileSize, r * tileSize);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // When in editor mode, clicking on the canvas “paints” a tile.
+    let isDrawing = false;
+    function handleEditorDraw(e) {
+        if (mode !== "editor") return;
+      const rect = canvas.getBoundingClientRect();
+      // Adjust for camera offset.
+      const mouseX = e.clientX - rect.left + camera.x;
+      const mouseY = e.clientY - rect.top + camera.y;
+      const colClicked = Math.floor(mouseX / tileSize);
+      const rowClicked = Math.floor(mouseY / tileSize);
+      if (rowClicked < 0 || rowClicked >= rows || colClicked < 0 || colClicked >= levelColumns) return;
+
+      const tileSelect = document.getElementById("tileSelector");
+      const tileType = parseInt(tileSelect.value);
+      editorLevel[rowClicked][colClicked] = tileType;
+      drawEditor();
+    };
+
+
+    canvas.addEventListener("mousedown", function(event) {
+      if (mode == "editor") {
+        isDrawing = true;
+        handleEditorDraw(event);
+        event.preventDefault();
+      }
+    });
+    canvas.addEventListener("mousemove", function(event) {
+      if (mode == "editor" && isDrawing) {
+        handleEditorDraw(event);
+        event.preventDefault();
+      }
+    });
+    canvas.addEventListener("mouseup", function(event) {
+      if (mode == "editor") {
+        isDrawing = false;
+        event.preventDefault();
+      }
+    });
+
+    // Editor UI Buttons.
+    document.getElementById("clearButton").addEventListener("click", function() {
+      // Read the new column count from the input.
+      levelColumns = parseInt(document.getElementById("colInput").value) || 70;
+      // Reinitialize the editor level (with a floor on the bottom).
+      initEditorLevel();
+      // Reset the camera.
+      camera.x = 0; camera.y = 0;
+      drawEditor();
+    });
+
+    document.getElementById("exportButton").addEventListener("click", function() {
+      const output = "let level = " + JSON.stringify(editorLevel, null, 2) + ";";
+      document.getElementById("exportOutput").value = output;
+    });
+
+    document.getElementById("playButton").addEventListener("click", function() {
+      // Copy the editor level into the game level.
+      level = JSON.parse(JSON.stringify(editorLevel));
+      switchToGameMode();
+    });
+
+    // Editor loop to update the camera and redraw.
+    function editorLoop() {
+      if (mode !== "editor") return;
+      updateEditorCamera();
+      drawEditor();
+      requestAnimationFrame(editorLoop);
+    }
+
+    /*********************
+     *    Game Module    *
+     *********************/
+    let player = null;
+    let enemies = [];
+    let gameRunning = false;
+
+    // Set up keyboard event listeners.
+    document.addEventListener("keydown", function(e) {
+      keys[e.key] = true;
+    });
+    document.addEventListener("keyup", function(e) {
+      keys[e.key] = false;
+    });
+
+    // Initialize game objects.
+    function initGameObjects() {
+      // Reset camera.
+      camera.x = 0; camera.y = 0;
+      // Create the player.
+      player = {
+        x: 50,
+        y: 300,
+        width: 28,
+        height: 28,
+        vx: 0,
+        vy: 0,
+        onGround: false,
+        hearts: 3,
+        coins: 0,
+        invuln: 0
+      };
+      // Create a simple patrolling enemy.
+      enemies = [
+        { x: 300, y: 300, width: 28, height: 28, vx: 0.5, vy: 0 }
+      ];
+      gameRunning = true;
+    }
+
+    // In game mode the camera follows the player.
+    function updateCamera() {
+      camera.x = player.x + player.width / 2 - canvas.width / 2;
+      camera.y = player.y + player.height / 2 - canvas.height / 2;
+      const levelWidth = level[0].length * tileSize;
+      const levelHeight = level.length * tileSize;
+      if (camera.x < 0) camera.x = 0;
+      if (camera.y < 0) camera.y = 0;
+      if (camera.x > levelWidth - canvas.width) camera.x = levelWidth - canvas.width;
+      if (camera.y > levelHeight - canvas.height) camera.y = levelHeight - canvas.height;
+    }
+
+    // Utility: rectangle intersection check.
+    function rectIntersect(a, b) {
+      return !(b.x > a.x + a.width ||
+               b.x + b.width < a.x ||
+               b.y > a.y + a.height ||
+               b.y + b.height < a.y);
+    }
+
+    // Checks if an entity is on a ladder.
+    function onLadder(entity) {
+      let startRow = Math.floor(entity.y / tileSize);
+      let endRow = Math.floor((entity.y + entity.height - 1) / tileSize);
+      let startCol = Math.floor(entity.x / tileSize);
+      let endCol = Math.floor((entity.x + entity.width - 1) / tileSize);
+      for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+          if (level[r] && level[r][c] === TILE_LADDER) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    // Horizontal collision detection.
+    function horizontalCollision(entity) {
+      let startRow = Math.floor(entity.y / tileSize);
+      let endRow = Math.floor((entity.y + entity.height - 1) / tileSize);
+      if (entity.vx > 0) {
+        let right = entity.x + entity.width;
+        let col = Math.floor(right / tileSize);
+        for (let r = startRow; r <= endRow; r++) {
+          if (level[r] && level[r][col] !== undefined) {
+            const tile = level[r][col];
+            if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+              let tileX = col * tileSize;
+              if (right > tileX) {
+                entity.x = tileX - entity.width;
+                entity.vx = 0;
+                entity.onGround = true;
+              }
+            }
+          }
+        }
+      } else if (entity.vx < 0) {
+        let col = Math.floor(entity.x / tileSize);
+        for (let r = startRow; r <= endRow; r++) {
+          if (level[r] && level[r][col] !== undefined) {
+            const tile = level[r][col];
+            if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+              let tileX = col * tileSize + tileSize;
+              if (entity.x < tileX) {
+                entity.x = tileX;
+                entity.vx = 0;
+                entity.onGround = true;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Vertical collision detection.
+    function verticalCollision(entity) {
+      let startCol = Math.floor(entity.x / tileSize);
+      let endCol = Math.floor((entity.x + entity.width - 1) / tileSize);
+      if (entity.vy > 0) { // Falling down.
+        let bottom = entity.y + entity.height;
+        let row = Math.floor(bottom / tileSize);
+        for (let c = startCol; c <= endCol; c++) {
+          if (level[row] && level[row][c] !== undefined) {
+            const tile = level[row][c];
+            if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE || tile === TILE_ONEWAY) {
+              let tileY = row * tileSize;
+              if (bottom > tileY && (tile !== TILE_ONEWAY || (entity.y + entity.height - entity.vy) <= tileY + 5)) {
+                entity.y = tileY - entity.height;
+                entity.vy = 0;
+                entity.onGround = true;
+              }
+            }
+          }
+        }
+      } else if (entity.vy < 0) { // Jumping up.
+        let row = Math.floor(entity.y / tileSize);
+        for (let c = startCol; c <= endCol; c++) {
+          if (level[row] && level[row][c] !== undefined) {
+            const tile = level[row][c];
+            if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+              let tileY = row * tileSize + tileSize;
+              if (entity.y < tileY) {
+                entity.y = tileY;
+                entity.vy = 0;
+                if (tile === TILE_EXPLOSIVE) {
+                  level[row][c] = TILE_EMPTY;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Update the player.
+    function updatePlayer() {
+      //player.onGround = false;
+      if (keys["ArrowLeft"]) {
+        player.vx = -3;
+      } else if (keys["ArrowRight"]) {
+        player.vx = 3;
+      } else {
+        player.vx *= 0.8;
+        if (Math.abs(player.vx) < 0.1) player.vx = 0;
+      }
+      if (onLadder(player)) {
+        if (keys["ArrowUp"]) {
+          player.vy = -2;
+        } else if (keys["ArrowDown"]) {
+          player.vy = 2;
+        } else {
+          player.vy = 0;
+        }
+      } else {
+        if (keys["ArrowUp"] && player.onGround) {
+          player.vy = -8;
+          player.onGround = false;
+        }
+        player.vy += gravity;
+      }
+      player.x += player.vx;
+      horizontalCollision(player);
+      player.y += player.vy;
+      verticalCollision(player);
+      collectCoins(player);
+      if (player.invuln > 0) player.invuln--;
+    }
+
+    // Collect coins.
+    function collectCoins(entity) {
+      let startRow = Math.floor(entity.y / tileSize);
+      let endRow = Math.floor((entity.y + entity.height - 1) / tileSize);
+      let startCol = Math.floor(entity.x / tileSize);
+      let endCol = Math.floor((entity.x + entity.width - 1) / tileSize);
+      for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+          if (level[r] && level[r][c] === TILE_COIN) {
+            level[r][c] = TILE_EMPTY;
+            entity.coins++;
+          }
+        }
+      }
+    }
+
+    // Update enemies.
+    function updateEnemies() {
+      enemies.forEach(function(enemy) {
+        enemy.x += enemy.vx;
+        let startRow = Math.floor(enemy.y / tileSize);
+        let endRow = Math.floor((enemy.y + enemy.height - 1) / tileSize);
+        if (enemy.vx > 0) {
+          let right = enemy.x + enemy.width;
+          let col = Math.floor(right / tileSize);
+          for (let r = startRow; r <= endRow; r++) {
+            if (level[r] && level[r][col] !== undefined) {
+              const tile = level[r][col];
+              if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+                enemy.x = col * tileSize - enemy.width;
+                enemy.vx *= -1;
+                break;
+              }
+            }
+          }
+        } else if (enemy.vx < 0) {
+          let col = Math.floor(enemy.x / tileSize);
+          for (let r = startRow; r <= endRow; r++) {
+            if (level[r] && level[r][col] !== undefined) {
+              const tile = level[r][col];
+              if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+                enemy.x = (col + 1) * tileSize;
+                enemy.vx *= -1;
+                break;
+              }
+            }
+          }
+        }
+        enemy.vy += gravity;
+        enemy.y += enemy.vy;
+        let startCol = Math.floor(enemy.x / tileSize);
+        let endCol = Math.floor((enemy.x + enemy.width - 1) / tileSize);
+        if (enemy.vy > 0) {
+          let bottom = enemy.y + enemy.height;
+          let row = Math.floor(bottom / tileSize);
+          for (let c = startCol; c <= endCol; c++) {
+            if (level[row] && level[row][c] !== undefined) {
+              const tile = level[row][c];
+              if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE || tile === TILE_ONEWAY) {
+                let tileY = row * tileSize;
+                if (bottom > tileY && (tile !== TILE_ONEWAY || (enemy.y + enemy.height - enemy.vy) <= tileY + 5)) {
+                  enemy.y = tileY - enemy.height;
+                  enemy.vy = 0;
+                }
+              }
+            }
+          }
+        } else if (enemy.vy < 0) {
+          let row = Math.floor(enemy.y / tileSize);
+          for (let c = startCol; c <= endCol; c++) {
+            if (level[row] && level[row][c] !== undefined) {
+              const tile = level[row][c];
+              if (tile === TILE_BLOCK || tile === TILE_EXPLOSIVE) {
+                let tileY = row * tileSize + tileSize;
+                if (enemy.y < tileY) {
+                  enemy.y = tileY;
+                  enemy.vy = 0;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // Check for collisions between player and enemies.
+    function checkPlayerEnemyCollisions() {
+      enemies.forEach(function(enemy) {
+        if (rectIntersect(player, enemy)) {
+          if (player.invuln <= 0) {
+            player.hearts--;
+            player.invuln = 60;
+          }
+        }
+      });
+    }
+
+    // Update game state.
+    function updateGame() {
+      if (!gameRunning) return;
+      updatePlayer();
+      updateEnemies();
+      checkPlayerEnemyCollisions();
+      updateCamera();
+      // End game if the player falls off or loses all hearts.
+      if (player.y > level.length * tileSize || player.hearts <= 0) {
+        gameRunning = false;
+        setTimeout(function() {
+          alert("Game Over!");
+          switchToEditorMode();
+        }, 100);
+      }
+    }
+
+    function drawRoutine(lvl,ctx){
+      for (let r = 0; r < lvl.length; r++) {
+        for (let c = 0; c < lvl[r].length; c++) {
+          const tile = lvl[r][c];
+          if (tile !== TILE_EMPTY) {
+            if (tileSprites[tile]) {
+                const src = tileSprites[tile];
+                // Draw from the spritesheet.
+                // Parameters: (image, srcX, srcY, srcWidth, srcHeight, destX, destY, destWidth, destHeight)
+                ctx.drawImage(
+                    spriteSheet,
+                    src.x, src.y, src.width, src.height,
+                    c * tileSize, r * tileSize, tileSize, tileSize
+                );
+            } else {
+              if (tile === TILE_LADDER) {
+                ctx.strokeStyle = "#8B4513";
+                ctx.beginPath();
+                ctx.moveTo(c * tileSize + tileSize/4, r * tileSize);
+                ctx.lineTo(c * tileSize + tileSize/4, r * tileSize + tileSize);
+                ctx.moveTo(c * tileSize + 3 * tileSize/4, r * tileSize);
+                ctx.lineTo(c * tileSize + 3 * tileSize/4, r * tileSize + tileSize);
+                ctx.stroke();
+              } else {
+                ctx.fillStyle = tileColors[tile] || "#000";
+                ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
+
+              }
+            }
+          }
+        }
+      }
+    }
+
+
+    // Draw the game scene.
+    function drawGame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(-camera.x, -camera.y);
+      // Draw level tiles.
+      drawRoutine(level,ctx);
+      // Draw the player.
+      ctx.fillStyle = "blue";
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+      // Draw enemies.
+      ctx.fillStyle = "green";
+      enemies.forEach(function(enemy) {
+        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+      });
+      ctx.restore();
+      // Draw UI text.
+      ctx.fillStyle = "black";
+      ctx.font = "20px Arial";
+      ctx.fillText("Hearts: " + player.hearts, 10, 20);
+      ctx.fillText("Coins: " + player.coins, 10, 40);
+    }
+
+    // Main game loop.
+    function gameLoop() {
+      if (!gameRunning) return;
+      updateGame();
+      drawGame();
+      requestAnimationFrame(gameLoop);
+    }
+
+    /************************************
+     * Mode Switching & Initialization  *
+     ************************************/
+    function switchToGameMode() {
+      mode = "game";
+      document.getElementById("editorUI").classList.add("hidden");
+      document.getElementById("gameUI").classList.remove("hidden");
+      initGameObjects();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function switchToEditorMode() {
+      mode = "editor";
+      document.getElementById("editorUI").classList.remove("hidden");
+      document.getElementById("gameUI").classList.add("hidden");
+      camera.x = 0;
+      camera.y = 0;
+      requestAnimationFrame(editorLoop);
+    }
+
+    document.getElementById("backToEditorButton").addEventListener("click", function() {
+      gameRunning = false;
+      switchToEditorMode();
+    });
+
+    // Start in Editor mode.
+    switchToEditorMode();
+  </script>
+</body>
+</html>
