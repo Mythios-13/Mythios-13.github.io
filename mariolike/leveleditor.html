@@ -86,16 +86,16 @@
     // Preload images for each tile type.
     // Load the spritesheet image (make sure the path is correct)
     const spriteSheet = new Image();
-    spriteSheet.src = "images/tiles.png";
+    spriteSheet.src = "images/tiles2.png";
 
     // Define the source offsets (and optionally source width/height) for each tile type.
     // For example, if your spritesheet contains tiles of 32x32 pixels arranged in a row:
     const tileSprites = {
-    [TILE_BLOCK]:     { x: 7,   y: 0, width: 16, height: 16 },
-    [TILE_ONEWAY]:    { x: 64,  y: 32, width: 16, height: 16 },
-    [TILE_LADDER]:    { x: 144,  y: 48, width: 16, height: 16 },
-    [TILE_EXPLOSIVE]: { x: 165,  y: 110, width: 16, height: 16 },
-    [TILE_COIN]:      { x: 128, y: 112, width: 16, height: 16 }
+    [TILE_BLOCK]:     { x: 0,   y: 0, width: 32, height: 32 },
+    [TILE_ONEWAY]:    { x: 32,  y: 0, width: 32, height: 32 },
+    [TILE_LADDER]:    { x: 64,  y: 0, width: 32, height: 32 },
+    [TILE_EXPLOSIVE]: { x: 0,  y: 32, width: 32, height: 32 },
+    [TILE_COIN]:      { x: 96, y: 0, width: 32, height: 32 }
     };
 
     // Modes: "editor" or "game"
