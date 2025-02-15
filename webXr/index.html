@@ -2,7 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name='viewport' content='width=device-width, initial-scale=1, user-scalable=no'>
     <title>WebXR Minecraft-like Game</title>
     <style>
       body {
@@ -54,7 +53,7 @@
     <!-- Three.js from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
     <script>
-      // Utility: show error/warning message on screen.
+      // --- Utility for error logging ---
       const errorLog = document.getElementById("errorLog");
       function showError(msg) {
         errorLog.innerText = msg;
@@ -65,7 +64,7 @@
         errorLog.style.display = "none";
       }
 
-      // === Basic Three.js Setup ===
+      // --- Basic Three.js Setup ---
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x87ceeb); // Soft sky-blue
 
@@ -87,9 +86,10 @@
       renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
 
-      // === Create a Pixel Noise Texture ===
+      // --- Create a Noise Texture with Bigger Pixels ---
       function generateNoiseTexture() {
-        const size = 128;
+        // Use a lower resolution for larger (blockier) pixels.
+        const size = 32;
         const canvas = document.createElement("canvas");
         canvas.width = size;
         canvas.height = size;
@@ -110,7 +110,7 @@
       }
       const noiseTexture = generateNoiseTexture();
 
-      // === Create the Voxel Floor ===
+      // --- Create the Voxel Floor ---
       const cubeSize = 1;
       const gridSize = 64;
       const levels = 6; // level 0: grass; levels 1-5: dirt
@@ -157,14 +157,14 @@
       }
       scene.add(dirtMesh);
 
-      // === Lighting ===
+      // --- Lighting ---
       const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
       hemiLight.position.set(0, 20, 0);
       scene.add(hemiLight);
 
-      // === Game State & In-VR Play Button ===
+      // --- Game State & In-VR Play Button ---
       let gameStarted = false;
-      const cubes = []; // cubes added during gameplay
+      const cubes = []; // Cubes added during gameplay
 
       const playButtonGeometry = new THREE.PlaneGeometry(0.6, 0.3);
       const playButtonMaterial = new THREE.MeshBasicMaterial({ color: 0x00aa00 });
@@ -172,19 +172,11 @@
       playButton.position.set(0, 1.5, -2);
       scene.add(playButton);
 
-      // === VR Controllers Setup ===
+      // --- VR Controllers Setup ---
       const controller1 = renderer.xr.getController(0);
       scene.add(controller1);
       const controller2 = renderer.xr.getController(1);
       scene.add(controller2);
-
-      function setupController(controller) {
-        controller.addEventListener("connected", function (event) {
-          this.userData.handedness = event.data.handedness; // "left" or "right"
-        });
-      }
-      setupController(controller1);
-      setupController(controller2);
 
       let leftController, rightController;
       function assignControllers() {
@@ -199,9 +191,30 @@
         }
       }
 
-      // === Right Controller "select" (Trigger) Handling ===
+      // Set up controllers and store their gamepad info.
+      function setupController(controller) {
+        controller.addEventListener("connected", function (event) {
+          const { handedness, gamepad } = event.data;
+          this.userData.handedness = handedness;
+          this.userData.gamepad = gamepad;
+          assignControllers();
+          // For the right controller, add the selectstart listener immediately.
+          if (handedness === "right") {
+            this.addEventListener("selectstart", onSelectStart);
+          }
+        });
+        controller.addEventListener("disconnected", function () {
+          delete this.userData.handedness;
+          delete this.userData.gamepad;
+        });
+      }
+      setupController(controller1);
+      setupController(controller2);
+
+      // --- Right Controller "select" (Trigger) Handling ---
       function onSelectStart() {
         if (!gameStarted) {
+          // Use a raycaster from the right controller to check for a hit on the play button.
           const tempMatrix = new THREE.Matrix4();
           tempMatrix.identity().extractRotation(rightController.matrixWorld);
           const raycaster = new THREE.Raycaster();
@@ -216,6 +229,7 @@
           }
         }
         if (gameStarted) {
+          // In game mode, pressing the trigger adds a cube at the controller’s position.
           const cubeSize = 0.2;
           const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
           const cubeMaterial = new THREE.MeshStandardMaterial({
@@ -229,19 +243,12 @@
         }
       }
 
-      setTimeout(() => {
-        assignControllers();
-        if (rightController) {
-          rightController.addEventListener("selectstart", onSelectStart);
-        }
-      }, 1000);
-
-      // === Animation Loop & Controller Polling ===
+      // --- Animation Loop & Controller Polling ---
       let prevBPressed = false;
       renderer.setAnimationLoop(() => {
         assignControllers();
 
-        // Left Controller Movement
+        // --- Left Controller Movement ---
         if (
           leftController &&
           leftController.userData &&
@@ -251,15 +258,13 @@
           const x = gp.axes[0] || 0;
           const y = gp.axes[1] || 0;
           const moveSpeed = 0.05;
-          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
-            player.quaternion
-          );
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
           const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
           player.position.add(forward.multiplyScalar(y * moveSpeed));
           player.position.add(right.multiplyScalar(x * moveSpeed));
         }
 
-        // Right Controller Turning
+        // --- Right Controller Turning ---
         if (
           rightController &&
           rightController.userData &&
@@ -271,14 +276,14 @@
           player.rotation.y -= turnX * turnSpeed;
         }
 
-        // Cube Deletion with B Button (assumed index 3)
+        // --- Handle Cube Deletion with B Button (assumed index 3) ---
         if (
           rightController &&
           rightController.userData &&
           rightController.userData.gamepad
         ) {
           const gp = rightController.userData.gamepad;
-          const bButton = gp.buttons[3]; // adjust mapping if needed
+          const bButton = gp.buttons[3]; // Adjust mapping if needed.
           if (bButton) {
             if (bButton.pressed && !prevBPressed) {
               const cube = cubes.pop();
@@ -297,13 +302,14 @@
         renderer.render(scene, camera);
       });
 
+      // --- Handle Window Resize ---
       window.addEventListener("resize", () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
       });
 
-      // === Enter VR via the Splash Screen Button ===
+      // --- Enter VR via the Splash Screen Button ---
       const splash = document.getElementById("splash");
       const enterVRButton = document.getElementById("enterVRButton");
       enterVRButton.addEventListener("click", async () => {
