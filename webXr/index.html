@@ -50,7 +50,7 @@
     <!-- Error/Warning log -->
     <div id="errorLog"></div>
 
-    <!-- Three.js from CDN -->
+    <!-- Three.js Library -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
     <script>
       // --- Utility for error logging ---
@@ -86,9 +86,13 @@
       renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
 
+      // Expose some variables so the module below can use them.
+      window.renderer = renderer;
+      window.scene = scene;
+
       // --- Create a Noise Texture with Bigger Pixels ---
       function generateNoiseTexture() {
-        // Use a lower resolution for larger (blockier) pixels.
+        // Lower resolution for larger (blockier) pixels.
         const size = 32;
         const canvas = document.createElement("canvas");
         canvas.width = size;
@@ -214,7 +218,7 @@
       // --- Right Controller "select" (Trigger) Handling ---
       function onSelectStart() {
         if (!gameStarted) {
-          // Use a raycaster from the right controller to check for a hit on the play button.
+          // Raycast from right controller to check if play button is hit.
           const tempMatrix = new THREE.Matrix4();
           tempMatrix.identity().extractRotation(rightController.matrixWorld);
           const raycaster = new THREE.Raycaster();
@@ -229,7 +233,7 @@
           }
         }
         if (gameStarted) {
-          // In game mode, pressing the trigger adds a cube at the controller’s position.
+          // In-game: Trigger adds a cube at the controller’s position.
           const cubeSize = 0.2;
           const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
           const cubeMaterial = new THREE.MeshStandardMaterial({
@@ -334,6 +338,22 @@
           showError("WebXR not available.");
         }
       });
+    </script>
+
+    <!-- Module Script to Add Default Controller Models -->
+    <script type="module">
+      import { VRControllerModelFactory } from 'https://cdn.jsdelivr.net/npm/three@0.150.1/examples/jsm/webxr/VRControllerModelFactory.js';
+
+      // Get controller grips from the renderer and add a controller model to each.
+      const controllerGrip1 = window.renderer.xr.getControllerGrip(0);
+      const controllerGrip2 = window.renderer.xr.getControllerGrip(1);
+      const controllerModelFactory = new VRControllerModelFactory();
+
+      controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+      controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+
+      window.scene.add(controllerGrip1);
+      window.scene.add(controllerGrip2);
     </script>
   </body>
 </html>
