@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name='viewport' content='width=device-width, initial-scale=1, user-scalable=no'>
+    <title>WebXR Minecraft-like Game</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      /* Splash screen styling */
+      #splash {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+      }
+      #splash button {
+        font-size: 24px;
+        padding: 1em 2em;
+        cursor: pointer;
+      }
+      /* Error log styling */
+      #errorLog {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(255, 0, 0, 0.7);
+        color: #fff;
+        padding: 10px;
+        font-family: monospace;
+        z-index: 100;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Splash Screen -->
+    <div id="splash">
+      <button id="enterVRButton">Enter VR</button>
+    </div>
+
+    <!-- Error/Warning log -->
+    <div id="errorLog"></div>
+
+    <!-- Three.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+    <script>
+      // Utility: show error/warning message on screen.
+      const errorLog = document.getElementById("errorLog");
+      function showError(msg) {
+        errorLog.innerText = msg;
+        errorLog.style.display = "block";
+      }
+      function clearError() {
+        errorLog.innerText = "";
+        errorLog.style.display = "none";
+      }
+
+      // === Basic Three.js Setup ===
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb); // Soft sky-blue
+
+      // Create a "player" group with the camera inside.
+      const player = new THREE.Group();
+      player.position.set(0, 1.6, 0);
+      scene.add(player);
+
+      const camera = new THREE.PerspectiveCamera(
+        70,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      player.add(camera);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      // === Create a Pixel Noise Texture ===
+      function generateNoiseTexture() {
+        const size = 128;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext("2d");
+        const imageData = context.createImageData(size, size);
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          const v = Math.floor(Math.random() * 256);
+          imageData.data[i] = v;
+          imageData.data[i + 1] = v;
+          imageData.data[i + 2] = v;
+          imageData.data[i + 3] = 255;
+        }
+        context.putImageData(imageData, 0, 0);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        return texture;
+      }
+      const noiseTexture = generateNoiseTexture();
+
+      // === Create the Voxel Floor ===
+      const cubeSize = 1;
+      const gridSize = 64;
+      const levels = 6; // level 0: grass; levels 1-5: dirt
+      const offset = gridSize / 2;
+
+      const grassMaterial = new THREE.MeshStandardMaterial({
+        color: 0x66aa66,
+        map: noiseTexture,
+      });
+      const dirtMaterial = new THREE.MeshStandardMaterial({
+        color: 0x8b4513,
+        map: noiseTexture,
+      });
+      const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+
+      // Grass layer (top)
+      const grassCount = gridSize * gridSize;
+      const grassMesh = new THREE.InstancedMesh(cubeGeometry, grassMaterial, grassCount);
+      let index = 0;
+      const dummy = new THREE.Object3D();
+      for (let i = 0; i < gridSize; i++) {
+        for (let j = 0; j < gridSize; j++) {
+          dummy.position.set(i - offset + 0.5, -0.5, j - offset + 0.5);
+          dummy.updateMatrix();
+          grassMesh.setMatrixAt(index++, dummy.matrix);
+        }
+      }
+      scene.add(grassMesh);
+
+      // Dirt layers (levels 1-5)
+      const dirtLayers = levels - 1;
+      const dirtCount = gridSize * gridSize * dirtLayers;
+      const dirtMesh = new THREE.InstancedMesh(cubeGeometry, dirtMaterial, dirtCount);
+      index = 0;
+      for (let level = 1; level < levels; level++) {
+        const yPos = -(level + 0.5);
+        for (let i = 0; i < gridSize; i++) {
+          for (let j = 0; j < gridSize; j++) {
+            dummy.position.set(i - offset + 0.5, yPos, j - offset + 0.5);
+            dummy.updateMatrix();
+            dirtMesh.setMatrixAt(index++, dummy.matrix);
+          }
+        }
+      }
+      scene.add(dirtMesh);
+
+      // === Lighting ===
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+      hemiLight.position.set(0, 20, 0);
+      scene.add(hemiLight);
+
+      // === Game State & In-VR Play Button ===
+      let gameStarted = false;
+      const cubes = []; // cubes added during gameplay
+
+      const playButtonGeometry = new THREE.PlaneGeometry(0.6, 0.3);
+      const playButtonMaterial = new THREE.MeshBasicMaterial({ color: 0x00aa00 });
+      const playButton = new THREE.Mesh(playButtonGeometry, playButtonMaterial);
+      playButton.position.set(0, 1.5, -2);
+      scene.add(playButton);
+
+      // === VR Controllers Setup ===
+      const controller1 = renderer.xr.getController(0);
+      scene.add(controller1);
+      const controller2 = renderer.xr.getController(1);
+      scene.add(controller2);
+
+      function setupController(controller) {
+        controller.addEventListener("connected", function (event) {
+          this.userData.handedness = event.data.handedness; // "left" or "right"
+        });
+      }
+      setupController(controller1);
+      setupController(controller2);
+
+      let leftController, rightController;
+      function assignControllers() {
+        if (controller1.userData.handedness && controller2.userData.handedness) {
+          if (controller1.userData.handedness === "left") {
+            leftController = controller1;
+            rightController = controller2;
+          } else {
+            leftController = controller2;
+            rightController = controller1;
+          }
+        }
+      }
+
+      // === Right Controller "select" (Trigger) Handling ===
+      function onSelectStart() {
+        if (!gameStarted) {
+          const tempMatrix = new THREE.Matrix4();
+          tempMatrix.identity().extractRotation(rightController.matrixWorld);
+          const raycaster = new THREE.Raycaster();
+          raycaster.ray.origin.setFromMatrixPosition(rightController.matrixWorld);
+          raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+          const intersects = raycaster.intersectObject(playButton);
+          if (intersects.length > 0) {
+            gameStarted = true;
+            scene.remove(playButton);
+            console.log("Game started!");
+            return;
+          }
+        }
+        if (gameStarted) {
+          const cubeSize = 0.2;
+          const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+          const cubeMaterial = new THREE.MeshStandardMaterial({
+            color: Math.random() * 0xffffff,
+          });
+          const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+          cube.position.setFromMatrixPosition(rightController.matrixWorld);
+          scene.add(cube);
+          cubes.push(cube);
+          console.log("Cube added");
+        }
+      }
+
+      setTimeout(() => {
+        assignControllers();
+        if (rightController) {
+          rightController.addEventListener("selectstart", onSelectStart);
+        }
+      }, 1000);
+
+      // === Animation Loop & Controller Polling ===
+      let prevBPressed = false;
+      renderer.setAnimationLoop(() => {
+        assignControllers();
+
+        // Left Controller Movement
+        if (
+          leftController &&
+          leftController.userData &&
+          leftController.userData.gamepad
+        ) {
+          const gp = leftController.userData.gamepad;
+          const x = gp.axes[0] || 0;
+          const y = gp.axes[1] || 0;
+          const moveSpeed = 0.05;
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
+            player.quaternion
+          );
+          const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+          player.position.add(forward.multiplyScalar(y * moveSpeed));
+          player.position.add(right.multiplyScalar(x * moveSpeed));
+        }
+
+        // Right Controller Turning
+        if (
+          rightController &&
+          rightController.userData &&
+          rightController.userData.gamepad
+        ) {
+          const gp = rightController.userData.gamepad;
+          const turnSpeed = 0.05;
+          const turnX = gp.axes[0] || 0;
+          player.rotation.y -= turnX * turnSpeed;
+        }
+
+        // Cube Deletion with B Button (assumed index 3)
+        if (
+          rightController &&
+          rightController.userData &&
+          rightController.userData.gamepad
+        ) {
+          const gp = rightController.userData.gamepad;
+          const bButton = gp.buttons[3]; // adjust mapping if needed
+          if (bButton) {
+            if (bButton.pressed && !prevBPressed) {
+              const cube = cubes.pop();
+              if (cube) {
+                scene.remove(cube);
+                console.log("Cube removed");
+              }
+              prevBPressed = true;
+            }
+            if (!bButton.pressed) {
+              prevBPressed = false;
+            }
+          }
+        }
+
+        renderer.render(scene, camera);
+      });
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // === Enter VR via the Splash Screen Button ===
+      const splash = document.getElementById("splash");
+      const enterVRButton = document.getElementById("enterVRButton");
+      enterVRButton.addEventListener("click", async () => {
+        splash.style.display = "none";
+        if (navigator.xr) {
+          try {
+            const supported = await navigator.xr.isSessionSupported("immersive-vr");
+            if (!supported) {
+              showError("Immersive VR not supported on this device.");
+              return;
+            }
+            const session = await navigator.xr.requestSession("immersive-vr", {
+              requiredFeatures: ["local-floor"],
+            });
+            renderer.xr.setSession(session);
+            clearError();
+          } catch (e) {
+            showError("Failed to start XR session: " + e);
+            console.error("Failed to start XR session:", e);
+          }
+        } else {
+          showError("WebXR not available.");
+        }
+      });
+    </script>
+  </body>
+</html>
