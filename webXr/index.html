@@ -52,9 +52,8 @@
 
     <!-- Three.js Library -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-    <script>
 
-      import { XRControllerModelFactory } from 'https://cdn.jsdelivr.net/npm/three@0.150.1/examples/jsm/webxr/XRControllerModelFactory.js';
+    <script>
       // --- Utility for error logging ---
       const errorLog = document.getElementById("errorLog");
       function showError(msg) {
@@ -183,7 +182,7 @@
       scene.add(controller1);
       const controller2 = renderer.xr.getController(1);
       scene.add(controller2);
-
+/*
       // Get controller grips from the renderer and add a controller model to each.
       const controllerGrip1 = window.renderer.xr.getControllerGrip(0);
       const controllerGrip2 = window.renderer.xr.getControllerGrip(1);
@@ -193,7 +192,7 @@
       controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
 
       window.scene.add(controllerGrip1);
-      window.scene.add(controllerGrip2);
+      window.scene.add(controllerGrip2);*/
 
       let leftController, rightController;
 
@@ -357,5 +356,21 @@
         }
       });
     </script>
+
+    <!-- Module Script to Add Default Controller Models -->
+    <script type="module">
+        import { XRControllerModelFactory } from 'https://cdn.jsdelivr.net/npm/three@0.150.1/examples/jsm/webxr/XRControllerModelFactory.js';
+    
+        // Get controller grips from the renderer and add a controller model to each.
+        const controllerGrip1 = window.renderer.xr.getControllerGrip(0);
+        const controllerGrip2 = window.renderer.xr.getControllerGrip(1);
+        const controllerModelFactory = new XRControllerModelFactory();
+    
+        controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+        controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+    
+        window.scene.add(controllerGrip1);
+        window.scene.add(controllerGrip2);
+        </script>
   </body>
 </html>
