@@ -44,7 +44,7 @@
   <body>
     <!-- Splash Screen -->
     <div id="splash">
-      <button id="enterVRButton">Enter VR v4</button>
+      <button id="enterVRButton">Enter VR v5</button>
     </div>
 
     <!-- Error/Warning log (for non-VR messages) -->
@@ -215,6 +215,7 @@
           this.userData.handedness = handedness;
           this.userData.gamepad = gamepad;
           assignControllers();
+          appendLog("setupController  connected!");
           // For the right controller, add the selectstart listener immediately.
           if (handedness === "right") {
             this.addEventListener("selectstart", onSelectStart);
@@ -223,6 +224,7 @@
         controller.addEventListener("disconnected", function () {
           delete this.userData.handedness;
           delete this.userData.gamepad;
+          appendLog("setupController  disconnected!");
         });
       }
       setupController(controller1);
@@ -260,6 +262,9 @@
       const logMesh = new THREE.Mesh(logGeometry, logMaterial);
       logMesh.name = "logBox";
 
+      logMesh.position.set(0, 1.5, -1);
+      scene.add(logMesh);
+
       // Function to update the log canvas.
       function updateLogCanvas() {
         // Clear the canvas.
@@ -287,6 +292,7 @@
 
       // --- Right Controller "select" (Trigger) Handling ---
       function onSelectStart() {
+        appendLog("on select Start");
         if (!gameStarted) {
           // Raycast from right controller to check if play button is hit.
           const tempMatrix = new THREE.Matrix4();
@@ -331,13 +337,13 @@
         assignControllers();
 
         // --- Attach the Log Box to the Left Controller ---
-        if (leftController && !leftController.getObjectByName("logBox")) {
+        /*if (leftController && !leftController.getObjectByName("logBox")) {
           leftController.add(logMesh);
           // Position the log box slightly above the controller.
           logMesh.position.set(0, 0.1, 0);
           // Optionally, rotate so it's facing the user.
           logMesh.rotation.x = -Math.PI / 4;
-        }
+        }*/
 
         // --- Left Controller Movement ---
         if (
