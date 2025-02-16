@@ -44,7 +44,7 @@
   <body>
     <!-- Splash Screen -->
     <div id="splash">
-      <button id="enterVRButton">Enter VR v5</button>
+      <button id="enterVRButton">Enter VR v6</button>
     </div>
 
     <!-- Error/Warning log (for non-VR messages) -->
@@ -220,6 +220,16 @@
           if (handedness === "right") {
             this.addEventListener("selectstart", onSelectStart);
           }
+          // --- Add a simple visual ray to the controller ---
+          const rayGeometry = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, -1),
+          ]);
+          const rayMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+          const ray = new THREE.Line(rayGeometry, rayMaterial);
+          ray.name = "ray";
+          ray.scale.z = 1; // Adjust length as needed
+          this.add(ray);
         });
         controller.addEventListener("disconnected", function () {
           delete this.userData.handedness;
