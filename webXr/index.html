@@ -53,6 +53,8 @@
     <!-- Three.js Library -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
     <script>
+
+      import { XRControllerModelFactory } from 'https://cdn.jsdelivr.net/npm/three@0.150.1/examples/jsm/webxr/XRControllerModelFactory.js';
       // --- Utility for error logging ---
       const errorLog = document.getElementById("errorLog");
       function showError(msg) {
@@ -182,7 +184,23 @@
       const controller2 = renderer.xr.getController(1);
       scene.add(controller2);
 
+      // Get controller grips from the renderer and add a controller model to each.
+      const controllerGrip1 = window.renderer.xr.getControllerGrip(0);
+      const controllerGrip2 = window.renderer.xr.getControllerGrip(1);
+      const controllerModelFactory = new XRControllerModelFactory();
+
+      controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+      controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+
+      window.scene.add(controllerGrip1);
+      window.scene.add(controllerGrip2);
+
       let leftController, rightController;
+
+      leftController = controller1;
+      rightController = controller2;
+
+
       function assignControllers() {
         if (controller1.userData.handedness && controller2.userData.handedness) {
           if (controller1.userData.handedness === "left") {
@@ -201,7 +219,7 @@
           const { handedness, gamepad } = event.data;
           this.userData.handedness = handedness;
           this.userData.gamepad = gamepad;
-          assignControllers();
+          //assignControllers();
           // For the right controller, add the selectstart listener immediately.
           if (handedness === "right") {
             this.addEventListener("selectstart", onSelectStart);
@@ -250,7 +268,7 @@
       // --- Animation Loop & Controller Polling ---
       let prevBPressed = false;
       renderer.setAnimationLoop(() => {
-        assignControllers();
+        //assignControllers();
 
         // --- Left Controller Movement ---
         if (
@@ -342,18 +360,9 @@
 
     <!-- Module Script to Add Default Controller Models -->
     <script type="module">
-      import { VRControllerModelFactory } from 'https://cdn.jsdelivr.net/npm/three@0.150.1/examples/jsm/webxr/VRControllerModelFactory.js';
+      
 
-      // Get controller grips from the renderer and add a controller model to each.
-      const controllerGrip1 = window.renderer.xr.getControllerGrip(0);
-      const controllerGrip2 = window.renderer.xr.getControllerGrip(1);
-      const controllerModelFactory = new VRControllerModelFactory();
 
-      controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
-      controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
-
-      window.scene.add(controllerGrip1);
-      window.scene.add(controllerGrip2);
     </script>
   </body>
 </html>
