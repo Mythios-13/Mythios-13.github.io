@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>WebXR Minecraft-like Game with Raycast Cube Placement</title>
+    <title>WebXR Minecraft-like Game (Three.js v0.173.0 - Modules)</title>
     <style>
       body {
         margin: 0;
@@ -26,7 +26,7 @@
         padding: 1em 2em;
         cursor: pointer;
       }
-      /* Error log styling (for on-page warnings) */
+      /* Error log styling (for non-VR messages) */
       #errorLog {
         position: absolute;
         bottom: 0;
@@ -44,16 +44,26 @@
   <body>
     <!-- Splash Screen -->
     <div id="splash">
-      <button id="enterVRButton">Enter VR v7</button>
+      <button id="enterVRButton">Enter VR v1.0</button>
     </div>
-
     <!-- Error/Warning log (for non-VR messages) -->
     <div id="errorLog"></div>
+    <!-- All code as an ES module -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.173.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/"
+            }
+        }
+    </script>
 
-    <!-- Three.js Library -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-    <script>
-      // --- Utility for error logging (on-page overlay) ---
+    <script type="module">
+      import * as THREE from 'three';
+      import { VRButton } from 'three/addons/webxr/VRButton.js';
+      import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
+      window.console.log("starting code module");
       const errorLog = document.getElementById("errorLog");
       function showError(msg) {
         errorLog.innerText = msg;
@@ -65,15 +75,13 @@
       }
 
       // --- Basic Three.js Setup ---
-      // Create a "world" group that will hold our player (camera & controllers)
       const world = new THREE.Group();
-      scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x87ceeb); // Soft sky-blue
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb);
       scene.add(world);
 
-      // Create the "player" group. This group moves with the user.
+      // Create the player group (will be moved when the user moves)
       const player = new THREE.Group();
-      // Set the player's origin at ground level; the camera will be offset above.
       world.add(player);
 
       // Create the camera and add it to the player group.
@@ -83,7 +91,6 @@
         0.1,
         1000
       );
-      // Offset the camera upward to simulate eye height (e.g. 1.6 meters).
       camera.position.set(0, 1.6, 0);
       player.add(camera);
 
@@ -91,15 +98,10 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
-
-      // Expose renderer and scene for the module script later.
-      window.renderer = renderer;
-      window.scene = scene;
-      window.player = player;
+      document.body.appendChild(VRButton.createButton(renderer));
 
       // --- Create a Noise Texture with Bigger Pixels ---
       function generateNoiseTexture() {
-        // Lower resolution for larger (blockier) pixels.
         const size = 32;
         const canvas = document.createElement("canvas");
         canvas.width = size;
@@ -121,7 +123,7 @@
       }
       const noiseTexture = generateNoiseTexture();
 
-      // --- Create the Voxel Floor ---
+      // --- Create the Voxel Floor (and dirt layers) ---
       const cubeSize = 1;
       const gridSize = 64;
       const levels = 6; // level 0: grass; levels 1-5: dirt
@@ -175,23 +177,25 @@
 
       // --- Game State & In-VR Play Button ---
       let gameStarted = false;
-      const cubes = []; // Cubes added during gameplay
+      const cubes = []; // Array to hold cubes added during gameplay
 
+      // Create a play button and add it to the camera so it always appears in front of the user.
       const playButtonGeometry = new THREE.PlaneGeometry(0.6, 0.3);
       const playButtonMaterial = new THREE.MeshBasicMaterial({ color: 0x00aa00 });
       const playButton = new THREE.Mesh(playButtonGeometry, playButtonMaterial);
-      playButton.position.set(0, 1.5, -2);
-      scene.add(playButton);
+      playButton.position.set(0, 0, -2);
+      camera.add(playButton);
 
       // --- VR Controllers Setup ---
-      // Instead of adding controllers to the scene, add them as children of the player group
       const controller1 = renderer.xr.getController(0);
       const controller2 = renderer.xr.getController(1);
       player.add(controller1);
       player.add(controller2);
 
-      let leftController, rightController;
+      let leftController = controller1;
+      let rightController = controller2;
       function assignControllers() {
+        // Removed the early return so we can actually assign based on handedness.
         if (controller1.userData.handedness && controller2.userData.handedness) {
           if (controller1.userData.handedness === "left") {
             leftController = controller1;
@@ -203,14 +207,13 @@
         }
       }
 
-      // Set up controllers and store their gamepad info.
       function setupController(controller) {
         controller.addEventListener("connected", function (event) {
           const { handedness, gamepad } = event.data;
           this.userData.handedness = handedness;
           this.userData.gamepad = gamepad;
           assignControllers();
-          // For the right controller, add the selectstart listener.
+          // For the right controller, add the selectstart listener for placing cubes.
           if (handedness === "right") {
             this.addEventListener("selectstart", onSelectStart);
           }
@@ -222,7 +225,7 @@
           const rayMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
           const ray = new THREE.Line(rayGeometry, rayMaterial);
           ray.name = "ray";
-          ray.scale.z = 1; // Adjust length as needed
+          ray.scale.z = 1;
           this.add(ray);
         });
         controller.addEventListener("disconnected", function () {
@@ -234,9 +237,7 @@
       setupController(controller2);
 
       // --- Create the VR Log Box ---
-      // Create a canvas that displays 25 lines of monospaced text.
       const logCanvas = document.createElement("canvas");
-      // Using 16px per line, set width to roughly 25 characters and height for 25 lines.
       logCanvas.width = 400;
       logCanvas.height = 400;
       const logContext = logCanvas.getContext("2d");
@@ -245,15 +246,10 @@
       logContext.fillStyle = "#ffffff";
       logContext.textBaseline = "top";
 
-      // Array to hold up to 25 lines.
       let logLines = [];
-
-      // Create a canvas texture for the log box.
       const logTexture = new THREE.CanvasTexture(logCanvas);
       logTexture.magFilter = THREE.NearestFilter;
       logTexture.minFilter = THREE.NearestFilter;
-
-      // Create a plane geometry for the log box.
       const logGeometry = new THREE.PlaneGeometry(0.3, 0.3);
       const logMaterial = new THREE.MeshBasicMaterial({
         map: logTexture,
@@ -263,9 +259,8 @@
       const logMesh = new THREE.Mesh(logGeometry, logMaterial);
       logMesh.name = "logBox";
 
-      // Function to update the log canvas.
       function updateLogCanvas() {
-        logContext.fillStyle = "rgba(0, 0, 0, 0.7)"; // semi-transparent background
+        logContext.fillStyle = "rgba(0, 0, 0, 0.7)";
         logContext.fillRect(0, 0, logCanvas.width, logCanvas.height);
         logContext.fillStyle = "#ffffff";
         const lineHeight = fontSize;
@@ -275,20 +270,20 @@
         logTexture.needsUpdate = true;
       }
 
-      // Global function to append a line to the log.
       function appendLog(text) {
         logLines.push(text);
         if (logLines.length > 25) {
-          logLines.shift(); // remove the oldest line
+          logLines.shift();
         }
         updateLogCanvas();
       }
       window.appendLog = appendLog;
 
-      // --- Right Controller "select" (Trigger) Handling ---
+      // --- Right Controller "select" (Trigger) Handling for placing cubes ---
       function onSelectStart() {
+        if (!rightController) return;
         if (!gameStarted) {
-          // Raycast from right controller to check if play button is hit.
+          // Raycast from right controller to see if the play button is hit.
           const tempMatrix = new THREE.Matrix4();
           tempMatrix.identity().extractRotation(rightController.matrixWorld);
           const raycaster = new THREE.Raycaster();
@@ -297,34 +292,40 @@
           const intersects = raycaster.intersectObject(playButton);
           if (intersects.length > 0) {
             gameStarted = true;
-            scene.remove(playButton);
+            camera.remove(playButton);
             appendLog("Game started!");
             console.log("Game started!");
             return;
           }
         }
         if (gameStarted) {
-          // In-game: Cast a ray from the right controller and place a cube
-          // at the intersection point with the floor.
+          // Cast a ray from the right controller to place a cube.
           const tempMatrix = new THREE.Matrix4();
           tempMatrix.identity().extractRotation(rightController.matrixWorld);
           const raycaster = new THREE.Raycaster();
           raycaster.ray.origin.setFromMatrixPosition(rightController.matrixWorld);
           raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-          const intersects = raycaster.intersectObjects([grassMesh, dirtMesh], false);
+          // Include floor/dirt and previously placed cubes in the raycast.
+          const objectsToIntersect = [grassMesh, dirtMesh, ...cubes];
+          const intersects = raycaster.intersectObjects(objectsToIntersect, false);
           if (intersects.length > 0) {
-            const point = intersects[0].point;
-            const cubeSize = 0.2;
-            const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
-            const cubeMaterial = new THREE.MeshStandardMaterial({
+            const intersect = intersects[0];
+            // Offset by half a block in the direction of the face normal and snap to grid.
+            let newPos = intersect.point.clone().add(intersect.face.normal.clone().multiplyScalar(0.5));
+            newPos.x = Math.floor(newPos.x) + 0.5;
+            newPos.y = Math.floor(newPos.y) + 0.5;
+            newPos.z = Math.floor(newPos.z) + 0.5;
+            
+            // Create a new cube (using the same cubeGeometry of size 1)
+            const blockMaterial = new THREE.MeshStandardMaterial({
               color: Math.random() * 0xffffff,
             });
-            const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-            cube.position.copy(point);
-            scene.add(cube);
-            cubes.push(cube);
-            appendLog("Cube added");
-            console.log("Cube added");
+            const block = new THREE.Mesh(cubeGeometry, blockMaterial);
+            block.position.copy(newPos);
+            scene.add(block);
+            cubes.push(block);
+            appendLog(`Cube added at (${newPos.x.toFixed(2)}, ${newPos.y.toFixed(2)}, ${newPos.z.toFixed(2)})`);
+            console.log("Cube added", newPos);
           } else {
             appendLog("No valid surface for cube placement");
             console.log("No valid intersection for cube placement");
@@ -337,56 +338,59 @@
       renderer.setAnimationLoop(() => {
         assignControllers();
 
-        // --- Attach the Log Box to the Left Controller ---
+        // Attach the log box to the left controller if not already attached.
         if (leftController && !leftController.getObjectByName("logBox")) {
           leftController.add(logMesh);
           logMesh.position.set(0, 0.1, 0);
           logMesh.rotation.x = -Math.PI / 4;
         }
 
-        // --- Left Controller Movement (using thumbstick) ---
-        if (
-          leftController &&
-          leftController.userData &&
-          leftController.userData.gamepad
-        ) {
+        // --- Left Controller Movement (thumbstick) for free movement ---
+        if (leftController && leftController.userData && leftController.userData.gamepad) {
           const gp = leftController.userData.gamepad;
           const x = gp.axes[0] || 0;
           const y = gp.axes[1] || 0;
           const moveSpeed = 0.05;
+          // Calculate movement relative to the player's current rotation.
           const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
           const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
-          player.position.add(forward.multiplyScalar(y * moveSpeed));
-          player.position.add(right.multiplyScalar(x * moveSpeed));
+          // Multiply and add (note: using cloned vectors so the originals remain unchanged).
+          player.position.add(forward.clone().multiplyScalar(y * moveSpeed));
+          player.position.add(right.clone().multiplyScalar(x * moveSpeed));
         }
 
-        // --- Right Controller Turning (using thumbstick) ---
-        if (
-          rightController &&
-          rightController.userData &&
-          rightController.userData.gamepad
-        ) {
+        // --- Right Controller Turning (thumbstick) ---
+        if (rightController && rightController.userData && rightController.userData.gamepad) {
           const gp = rightController.userData.gamepad;
           const turnSpeed = 0.05;
           const turnX = gp.axes[0] || 0;
           player.rotation.y -= turnX * turnSpeed;
         }
 
-        // --- Handle Cube Deletion with B Button (assumed index 3) ---
-        if (
-          rightController &&
-          rightController.userData &&
-          rightController.userData.gamepad
-        ) {
+        // --- Deleting cubes with the B button ---
+        if (rightController && rightController.userData && rightController.userData.gamepad) {
           const gp = rightController.userData.gamepad;
           const bButton = gp.buttons[3];
           if (bButton) {
             if (bButton.pressed && !prevBPressed) {
-              const cube = cubes.pop();
-              if (cube) {
-                scene.remove(cube);
+              // Cast a ray to look for a placed cube to remove.
+              const tempMatrix = new THREE.Matrix4();
+              tempMatrix.identity().extractRotation(rightController.matrixWorld);
+              const raycaster = new THREE.Raycaster();
+              raycaster.ray.origin.setFromMatrixPosition(rightController.matrixWorld);
+              raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+              // Check only the cubes array (i.e. cubes placed during gameplay)
+              const intersects = raycaster.intersectObjects(cubes, false);
+              if (intersects.length > 0) {
+                const cubeToRemove = intersects[0].object;
+                scene.remove(cubeToRemove);
+                const idx = cubes.indexOf(cubeToRemove);
+                if (idx !== -1) cubes.splice(idx, 1);
                 appendLog("Cube removed");
                 console.log("Cube removed");
+              } else {
+                appendLog("No cube to remove");
+                console.log("No cube found for removal");
               }
               prevBPressed = true;
             }
@@ -431,21 +435,13 @@
           showError("WebXR not available.");
         }
       });
-    </script>
 
-    <!-- Module Script to Add Default Controller Models -->
-    <script type="module">
-      import { VRControllerModelFactory } from "https://cdn.jsdelivr.net/npm/three@0.150.1/examples/jsm/webxr/VRControllerModelFactory.js";
-
-      // Get controller grips and add a controller model to each.
+      // --- Add XR Controller Models using XRControllerModelFactory ---
       const controllerGrip1 = renderer.xr.getControllerGrip(0);
       const controllerGrip2 = renderer.xr.getControllerGrip(1);
-      const controllerModelFactory = new VRControllerModelFactory();
-
+      const controllerModelFactory = new XRControllerModelFactory();
       controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
       controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
-
-      // Attach the grips to the player so they follow movement.
       player.add(controllerGrip1);
       player.add(controllerGrip2);
     </script>

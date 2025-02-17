@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>WebXR Minecraft-like Game with Log Box</title>
+    <title>WebXR Minecraft-like Game (Three.js v0.173.0 - Modules)</title>
     <style>
       body {
         margin: 0;
@@ -26,7 +26,7 @@
         padding: 1em 2em;
         cursor: pointer;
       }
-      /* Error log styling (for on-page warnings) */
+      /* Error log styling (for non-VR messages) */
       #errorLog {
         position: absolute;
         bottom: 0;
@@ -44,15 +44,29 @@
   <body>
     <!-- Splash Screen -->
     <div id="splash">
-      <button id="enterVRButton">Enter VR v6</button>
+      <button id="enterVRButton">Enter VR</button>
     </div>
-
     <!-- Error/Warning log (for non-VR messages) -->
     <div id="errorLog"></div>
+    <!-- All code as an ES module -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.173.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/"
+            }
+        }
+    </script>
 
-    <!-- Three.js Library -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-    <script>
+
+    <script type="module">
+      // Import Three.js core module and XRControllerModelFactory from Three.js v0.173.0
+      import * as THREE from 'three';
+      import { VRButton } from 'three/addons/webxr/VRButton.js';
+      import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
+ 
+      window.console.log("starting code module");
       // --- Utility for error logging (on-page overlay) ---
       const errorLog = document.getElementById("errorLog");
       function showError(msg) {
@@ -65,30 +79,33 @@
       }
 
       // --- Basic Three.js Setup ---
+      // Create a "world" group that will hold our player (camera & controllers)
+      const world = new THREE.Group();
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x87ceeb); // Soft sky-blue
+      scene.add(world);
 
-      // Create a "player" group with the camera inside.
+      // Create the "player" group. This group moves with the user.
       const player = new THREE.Group();
-      player.position.set(0, 1.6, 0);
-      scene.add(player);
+      world.add(player);
 
+      // Create the camera and add it to the player group.
       const camera = new THREE.PerspectiveCamera(
         70,
         window.innerWidth / window.innerHeight,
         0.1,
         1000
       );
+      // Offset the camera upward to simulate eye height (e.g. 1.6 meters).
+      camera.position.set(0, 1.6, 0);
       player.add(camera);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
-      document.body.appendChild(renderer.domElement);
 
-      // Expose renderer and scene for the module script later.
-      window.renderer = renderer;
-      window.scene = scene;
+      document.body.appendChild(renderer.domElement);
+      document.body.appendChild(VRButton.createButton(renderer));
 
       // --- Create a Noise Texture with Bigger Pixels ---
       function generateNoiseTexture() {
@@ -132,11 +149,7 @@
 
       // Grass layer (top)
       const grassCount = gridSize * gridSize;
-      const grassMesh = new THREE.InstancedMesh(
-        cubeGeometry,
-        grassMaterial,
-        grassCount
-      );
+      const grassMesh = new THREE.InstancedMesh(cubeGeometry, grassMaterial, grassCount);
       let index = 0;
       const dummy = new THREE.Object3D();
       for (let i = 0; i < gridSize; i++) {
@@ -151,11 +164,7 @@
       // Dirt layers (levels 1-5)
       const dirtLayers = levels - 1;
       const dirtCount = gridSize * gridSize * dirtLayers;
-      const dirtMesh = new THREE.InstancedMesh(
-        cubeGeometry,
-        dirtMaterial,
-        dirtCount
-      );
+      const dirtMesh = new THREE.InstancedMesh(cubeGeometry, dirtMaterial, dirtCount);
       index = 0;
       for (let level = 1; level < levels; level++) {
         const yPos = -(level + 0.5);
@@ -178,25 +187,26 @@
       let gameStarted = false;
       const cubes = []; // Cubes added during gameplay
 
+      // Create a play button and add it as a child of the camera (so it always appears in front of the user)
       const playButtonGeometry = new THREE.PlaneGeometry(0.6, 0.3);
-      const playButtonMaterial = new THREE.MeshBasicMaterial({
-        color: 0x00aa00,
-      });
-      const playButton = new THREE.Mesh(
-        playButtonGeometry,
-        playButtonMaterial
-      );
-      playButton.position.set(0, 1.5, -2);
-      scene.add(playButton);
+      const playButtonMaterial = new THREE.MeshBasicMaterial({ color: 0x00aa00 });
+      const playButton = new THREE.Mesh(playButtonGeometry, playButtonMaterial);
+      playButton.position.set(0, 0, -2);
+      camera.add(playButton);
 
       // --- VR Controllers Setup ---
+      // Add controllers as children of the player group so they move with the user.
       const controller1 = renderer.xr.getController(0);
-      scene.add(controller1);
       const controller2 = renderer.xr.getController(1);
-      scene.add(controller2);
+      player.add(controller1);
+      player.add(controller2);
 
       let leftController, rightController;
+      leftController = controller1;
+      rightController = controller2;
       function assignControllers() {
+        return;
+        // If both controllers are connected, assign based on handedness.
         if (controller1.userData.handedness && controller2.userData.handedness) {
           if (controller1.userData.handedness === "left") {
             leftController = controller1;
@@ -215,8 +225,7 @@
           this.userData.handedness = handedness;
           this.userData.gamepad = gamepad;
           assignControllers();
-          appendLog("setupController  connected!");
-          // For the right controller, add the selectstart listener immediately.
+          // For the right controller, add the selectstart listener.
           if (handedness === "right") {
             this.addEventListener("selectstart", onSelectStart);
           }
@@ -234,35 +243,25 @@
         controller.addEventListener("disconnected", function () {
           delete this.userData.handedness;
           delete this.userData.gamepad;
-          appendLog("setupController  disconnected!");
         });
       }
       setupController(controller1);
       setupController(controller2);
 
       // --- Create the VR Log Box ---
-      // We create a canvas that displays 25 lines of monospaced text.
       const logCanvas = document.createElement("canvas");
-      // Assuming each character is roughly 16px wide/high,
-      // we use 25*16 = 400px for both width and height.
       logCanvas.width = 400;
       logCanvas.height = 400;
       const logContext = logCanvas.getContext("2d");
-      // Setup the font (monospace) and colors.
       const fontSize = 16;
       logContext.font = `${fontSize}px monospace`;
       logContext.fillStyle = "#ffffff";
       logContext.textBaseline = "top";
 
-      // Array to hold up to 25 lines.
       let logLines = [];
-
-      // Create a canvas texture for the log box.
       const logTexture = new THREE.CanvasTexture(logCanvas);
       logTexture.magFilter = THREE.NearestFilter;
       logTexture.minFilter = THREE.NearestFilter;
-
-      // Create a plane geometry for the log box.
       const logGeometry = new THREE.PlaneGeometry(0.3, 0.3);
       const logMaterial = new THREE.MeshBasicMaterial({
         map: logTexture,
@@ -272,16 +271,10 @@
       const logMesh = new THREE.Mesh(logGeometry, logMaterial);
       logMesh.name = "logBox";
 
-      logMesh.position.set(0, 1.5, -1);
-      scene.add(logMesh);
-
-      // Function to update the log canvas.
       function updateLogCanvas() {
-        // Clear the canvas.
-        logContext.fillStyle = "rgba(0, 0, 0, 0.7)"; // semi-transparent background
+        logContext.fillStyle = "rgba(0, 0, 0, 0.7)";
         logContext.fillRect(0, 0, logCanvas.width, logCanvas.height);
         logContext.fillStyle = "#ffffff";
-        // Draw each line (only display the last 25 lines).
         const lineHeight = fontSize;
         for (let i = 0; i < logLines.length; i++) {
           logContext.fillText(logLines[i], 2, i * lineHeight);
@@ -289,55 +282,60 @@
         logTexture.needsUpdate = true;
       }
 
-      // Global function to append a line to the log.
       function appendLog(text) {
         logLines.push(text);
         if (logLines.length > 25) {
-          logLines.shift(); // remove the oldest line
+          logLines.shift();
         }
         updateLogCanvas();
       }
-      // Expose the function globally.
       window.appendLog = appendLog;
 
       // --- Right Controller "select" (Trigger) Handling ---
       function onSelectStart() {
-        appendLog("on select Start");
+        if (!rightController) return; // Safety check
         if (!gameStarted) {
-          // Raycast from right controller to check if play button is hit.
+          // Raycast from right controller to see if the play button is hit.
           const tempMatrix = new THREE.Matrix4();
           tempMatrix.identity().extractRotation(rightController.matrixWorld);
           const raycaster = new THREE.Raycaster();
-          raycaster.ray.origin.setFromMatrixPosition(
-            rightController.matrixWorld
-          );
+          raycaster.ray.origin.setFromMatrixPosition(rightController.matrixWorld);
           raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
           const intersects = raycaster.intersectObject(playButton);
           if (intersects.length > 0) {
             gameStarted = true;
-            scene.remove(playButton);
+            // Remove play button from camera
+            camera.remove(playButton);
             appendLog("Game started!");
             console.log("Game started!");
             return;
           }
         }
         if (gameStarted) {
-          // In-game: Trigger adds a cube at the controller’s position.
-          const cubeSize = 0.2;
-          const cubeGeometry = new THREE.BoxGeometry(
-            cubeSize,
-            cubeSize,
-            cubeSize
-          );
-          const cubeMaterial = new THREE.MeshStandardMaterial({
-            color: Math.random() * 0xffffff,
-          });
-          const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-          cube.position.setFromMatrixPosition(rightController.matrixWorld);
-          scene.add(cube);
-          cubes.push(cube);
-          appendLog("Cube added");
-          console.log("Cube added");
+          // Cast a ray from the right controller to the floor and place a cube.
+          const tempMatrix = new THREE.Matrix4();
+          tempMatrix.identity().extractRotation(rightController.matrixWorld);
+          const raycaster = new THREE.Raycaster();
+          raycaster.ray.origin.setFromMatrixPosition(rightController.matrixWorld);
+          raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+          const intersects = raycaster.intersectObjects([grassMesh, dirtMesh], false);
+          if (intersects.length > 0) {
+            const point = intersects[0].point;
+            const cubeSize = 0.2;
+            const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+            const cubeMaterial = new THREE.MeshStandardMaterial({
+              color: Math.random() * 0xffffff,
+            });
+            const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+            cube.position.copy(point);
+            scene.add(cube);
+            cubes.push(cube);
+            appendLog("Cube added");
+            console.log("Cube added");
+          } else {
+            appendLog("No valid surface for cube placement");
+            console.log("No valid intersection for cube placement");
+          }
         }
       }
 
@@ -346,55 +344,37 @@
       renderer.setAnimationLoop(() => {
         assignControllers();
 
-        // --- Attach the Log Box to the Left Controller ---
-        /*if (leftController && !leftController.getObjectByName("logBox")) {
+        // Attach the log box to the left controller if not already attached.
+        if (leftController && !leftController.getObjectByName("logBox")) {
           leftController.add(logMesh);
-          // Position the log box slightly above the controller.
           logMesh.position.set(0, 0.1, 0);
-          // Optionally, rotate so it's facing the user.
           logMesh.rotation.x = -Math.PI / 4;
-        }*/
+        }
 
-        // --- Left Controller Movement ---
-        if (
-          leftController &&
-          leftController.userData &&
-          leftController.userData.gamepad
-        ) {
+        // Left Controller Movement (thumbstick)
+        if (leftController && leftController.userData && leftController.userData.gamepad) {
           const gp = leftController.userData.gamepad;
           const x = gp.axes[0] || 0;
           const y = gp.axes[1] || 0;
           const moveSpeed = 0.05;
-          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
-            player.quaternion
-          );
-          const right = new THREE.Vector3(1, 0, 0).applyQuaternion(
-            player.quaternion
-          );
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+          const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
           player.position.add(forward.multiplyScalar(y * moveSpeed));
           player.position.add(right.multiplyScalar(x * moveSpeed));
         }
 
-        // --- Right Controller Turning ---
-        if (
-          rightController &&
-          rightController.userData &&
-          rightController.userData.gamepad
-        ) {
+        // Right Controller Turning (thumbstick)
+        if (rightController && rightController.userData && rightController.userData.gamepad) {
           const gp = rightController.userData.gamepad;
           const turnSpeed = 0.05;
           const turnX = gp.axes[0] || 0;
           player.rotation.y -= turnX * turnSpeed;
         }
 
-        // --- Handle Cube Deletion with B Button (assumed index 3) ---
-        if (
-          rightController &&
-          rightController.userData &&
-          rightController.userData.gamepad
-        ) {
+        // Cube deletion with B button (assumed index 3)
+        if (rightController && rightController.userData && rightController.userData.gamepad) {
           const gp = rightController.userData.gamepad;
-          const bButton = gp.buttons[3]; // Adjust mapping if needed.
+          const bButton = gp.buttons[3];
           if (bButton) {
             if (bButton.pressed && !prevBPressed) {
               const cube = cubes.pop();
@@ -428,9 +408,7 @@
         splash.style.display = "none";
         if (navigator.xr) {
           try {
-            const supported = await navigator.xr.isSessionSupported(
-              "immersive-vr"
-            );
+            const supported = await navigator.xr.isSessionSupported("immersive-vr");
             if (!supported) {
               showError("Immersive VR not supported on this device.");
               return;
@@ -448,26 +426,15 @@
           showError("WebXR not available.");
         }
       });
-    </script>
 
-    <!-- Module Script to Add Default Controller Models -->
-    <script type="module">
-      import { XRControllerModelFactory } from "https://cdn.jsdelivr.net/npm/three@0.150.1/examples/jsm/webxr/XRControllerModelFactory.js";
-
-      // Get controller grips from the renderer and add a controller model to each.
-      const controllerGrip1 = window.renderer.xr.getControllerGrip(0);
-      const controllerGrip2 = window.renderer.xr.getControllerGrip(1);
+      // --- Add XR Controller Models using XRControllerModelFactory ---
+      const controllerGrip1 = renderer.xr.getControllerGrip(0);
+      const controllerGrip2 = renderer.xr.getControllerGrip(1);
       const controllerModelFactory = new XRControllerModelFactory();
-
-      controllerGrip1.add(
-        controllerModelFactory.createControllerModel(controllerGrip1)
-      );
-      controllerGrip2.add(
-        controllerModelFactory.createControllerModel(controllerGrip2)
-      );
-
-      window.scene.add(controllerGrip1);
-      window.scene.add(controllerGrip2);
+      controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+      controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+      player.add(controllerGrip1);
+      player.add(controllerGrip2);
     </script>
   </body>
 </html>
