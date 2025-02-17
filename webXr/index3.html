@@ -54,8 +54,11 @@
     <!-- All code as an ES module -->
     <script type="module">
       // Import Three.js core module and XRControllerModelFactory from Three.js v0.173.0
-      import * as THREE from './modules/three.module.min.js';
-      import { XRControllerModelFactory } from './modules/XRControllerModelFactory.js';
+      import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.173.0/build/three.module.js';
+      import { XRControllerModelFactory } from 'https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/webxr/XRControllerModelFactory.js';
+      import { XRButton } from 'https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/webxr/XRButton.js';
+
+      document.body.appendChild(XRButton.createButton(renderer));
  
       window.console.log("starting code module");
       // --- Utility for error logging (on-page overlay) ---
@@ -191,7 +194,10 @@
       player.add(controller2);
 
       let leftController, rightController;
+      leftController = controller1;
+      rightController = controller2;
       function assignControllers() {
+        return;
         // If both controllers are connected, assign based on handedness.
         if (controller1.userData.handedness && controller2.userData.handedness) {
           if (controller1.userData.handedness === "left") {
