@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>WebXR Minecraft-like Game with Raycast Cube Placement</title>
+    <title>WebXR Minecraft-like Game (Three.js v0.173.0 - Modules)</title>
     <style>
       body {
         margin: 0;
@@ -26,7 +26,7 @@
         padding: 1em 2em;
         cursor: pointer;
       }
-      /* Error log styling (for on-page warnings) */
+      /* Error log styling (for non-VR messages) */
       #errorLog {
         position: absolute;
         bottom: 0;
@@ -44,15 +44,16 @@
   <body>
     <!-- Splash Screen -->
     <div id="splash">
-      <button id="enterVRButton">Enter VR v7</button>
+      <button id="enterVRButton">Enter VR</button>
     </div>
-
     <!-- Error/Warning log (for non-VR messages) -->
     <div id="errorLog"></div>
+    <!-- All code as an ES module -->
+    <script type="module">
+      // Import Three.js core as a module and the XRControllerModelFactory
+      import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.173.0/build/three.module.js';
+      import { XRControllerModelFactory } from 'https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/webxr/XRControllerModelFactory.js';
 
-    <!-- Three.js Library -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-    <script>
       // --- Utility for error logging (on-page overlay) ---
       const errorLog = document.getElementById("errorLog");
       function showError(msg) {
@@ -67,7 +68,7 @@
       // --- Basic Three.js Setup ---
       // Create a "world" group that will hold our player (camera & controllers)
       const world = new THREE.Group();
-      scene = new THREE.Scene();
+      const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x87ceeb); // Soft sky-blue
       scene.add(world);
 
@@ -91,11 +92,6 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
-
-      // Expose renderer and scene for the module script later.
-      window.renderer = renderer;
-      window.scene = scene;
-      window.player = player;
 
       // --- Create a Noise Texture with Bigger Pixels ---
       function generateNoiseTexture() {
@@ -184,7 +180,7 @@
       scene.add(playButton);
 
       // --- VR Controllers Setup ---
-      // Instead of adding controllers to the scene, add them as children of the player group
+      // Instead of adding controllers directly to the scene, add them as children of the player group.
       const controller1 = renderer.xr.getController(0);
       const controller2 = renderer.xr.getController(1);
       player.add(controller1);
@@ -311,6 +307,7 @@
           const raycaster = new THREE.Raycaster();
           raycaster.ray.origin.setFromMatrixPosition(rightController.matrixWorld);
           raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+          // Check intersection against both grass and dirt layers.
           const intersects = raycaster.intersectObjects([grassMesh, dirtMesh], false);
           if (intersects.length > 0) {
             const point = intersects[0].point;
@@ -431,21 +428,16 @@
           showError("WebXR not available.");
         }
       });
-    </script>
 
-    <!-- Module Script to Add Default Controller Models -->
-    <script type="module">
-      import { VRControllerModelFactory } from "https://cdn.jsdelivr.net/npm/three@0.150.1/examples/jsm/webxr/VRControllerModelFactory.js";
-
-      // Get controller grips and add a controller model to each.
+      // --- Add XR Controller Models using XRControllerModelFactory ---
       const controllerGrip1 = renderer.xr.getControllerGrip(0);
       const controllerGrip2 = renderer.xr.getControllerGrip(1);
-      const controllerModelFactory = new VRControllerModelFactory();
+      const controllerModelFactory = new XRControllerModelFactory();
 
       controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
       controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
 
-      // Attach the grips to the player so they follow movement.
+      // Attach the controller grips to the player so they move with you.
       player.add(controllerGrip1);
       player.add(controllerGrip2);
     </script>
