@@ -374,7 +374,8 @@
         // Cube deletion with B button (assumed index 3)
         if (rightController && rightController.userData && rightController.userData.gamepad) {
           const gp = rightController.userData.gamepad;
-          const bButton = gp.buttons[3];
+          const bButton = gp.buttons[5]; // button B
+          //const aButton = gp.buttons[4]; // button A
           if (bButton) {
             if (bButton.pressed && !prevBPressed) {
               const cube = cubes.pop();

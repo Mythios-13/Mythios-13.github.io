@@ -195,6 +195,7 @@
       let leftController = controller1;
       let rightController = controller2;
       function assignControllers() {
+        return;
         // Removed the early return so we can actually assign based on handedness.
         if (controller1.userData.handedness && controller2.userData.handedness) {
           if (controller1.userData.handedness === "left") {
@@ -350,7 +351,13 @@
           const gp = leftController.userData.gamepad;
           const x = gp.axes[0] || 0;
           const y = gp.axes[1] || 0;
-          const moveSpeed = 0.05;
+
+          const grapButton = gp.buttons[1]; // button grab
+          if(grapButton && grapButton.pressed){
+            appendLog('Axes x:'+x+' y:'+y);
+          }
+
+          const moveSpeed = 0.5;
           // Calculate movement relative to the player's current rotation.
           const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
           const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
@@ -365,12 +372,10 @@
           const turnSpeed = 0.05;
           const turnX = gp.axes[0] || 0;
           player.rotation.y -= turnX * turnSpeed;
-        }
 
-        // --- Deleting cubes with the B button ---
-        if (rightController && rightController.userData && rightController.userData.gamepad) {
-          const gp = rightController.userData.gamepad;
-          const bButton = gp.buttons[3];
+          // --- Deleting cubes with the B button ---
+          const bButton = gp.buttons[5]; // button B
+          //const aButton = gp.buttons[4]; // button A
           if (bButton) {
             if (bButton.pressed && !prevBPressed) {
               // Cast a ray to look for a placed cube to remove.
