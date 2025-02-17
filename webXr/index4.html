@@ -48,10 +48,6 @@
     </div>
     <!-- Error/Warning log (for non-VR messages) -->
     <div id="errorLog"></div>
-    <script>
-        console.log("starting code");
-    </script>
-
     <!-- All code as an ES module -->
     <script type="importmap">
         {
@@ -66,10 +62,12 @@
     <script type="module">
     // Import Three.js core module and XRControllerModelFactory from Three.js v0.173.0
     import * as THREE from 'three';
+    import { VRButton } from 'three/addons/webxr/VRButton.js';
     import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
-    import { XRButton } from 'three/addons/webxr/XRButton.js';
 
-      document.body.appendChild(XRButton.createButton(renderer));
+    let container = document.createElement( 'div' );
+    document.body.appendChild( container );
+      
  
       window.console.log("starting code module");
       // --- Utility for error logging (on-page overlay) ---
@@ -108,7 +106,11 @@
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
-      document.body.appendChild(renderer.domElement);
+
+      //document.body.appendChild(renderer.domElement);
+      container.appendChild( renderer.domElement );
+
+      document.body.appendChild(VRButton.createButton(renderer));
 
       // --- Create a Noise Texture with Bigger Pixels ---
       function generateNoiseTexture() {

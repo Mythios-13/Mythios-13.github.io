@@ -48,17 +48,24 @@
     </div>
     <!-- Error/Warning log (for non-VR messages) -->
     <div id="errorLog"></div>
-    <script>
-        console.log("starting code");
-    </script>
+
     <!-- All code as an ES module -->
     <script type="module">
       // Import Three.js core module and XRControllerModelFactory from Three.js v0.173.0
       import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.173.0/build/three.module.js';
+      /****
+       * 
+       * 
+       *  THIS DOES NOT WORK
+       * 
+       * 
+       * */
+      // The path must be derived from . or .., thus the module importmap is important to have this consistency!!!
       import { XRControllerModelFactory } from 'https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/webxr/XRControllerModelFactory.js';
-      import { XRButton } from 'https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/webxr/XRButton.js';
+      //import { XRButton } from 'https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/webxr/XRButton.js';
 
-      document.body.appendChild(XRButton.createButton(renderer));
+      let container = document.createElement( 'div' );
+      document.body.appendChild( container );
  
       window.console.log("starting code module");
       // --- Utility for error logging (on-page overlay) ---
@@ -97,7 +104,9 @@
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
-      document.body.appendChild(renderer.domElement);
+      container.appendChild(renderer.domElement);
+
+      //document.body.appendChild(XRButton.createButton(renderer));
 
       // --- Create a Noise Texture with Bigger Pixels ---
       function generateNoiseTexture() {
