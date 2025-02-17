@@ -353,11 +353,11 @@
           const y = gp.axes[1] || 0;
 
           const grapButton = gp.buttons[1]; // button grab
-          const xButton = gp.buttons[5]; // button B
+          const tButton = gp.buttons[0]; // button B
           if(grapButton && grapButton.pressed){
-            appendLog('Axes x:'+x+' y:'+y);
+            appendLog('Axes x:'+gp.axes[0]+' y:'+gp.axes[1]);
           }
-          if(xButton && xButton.pressed){
+          if(tButton && tButton.pressed){
             appendLog('gamepad'+JSON.stringify(gp));
           }
 
