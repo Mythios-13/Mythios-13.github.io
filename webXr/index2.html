@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>WebXR Minecraft-like Game (Three.js v0.173.0 - Modules)</title>
+    <title>WebXR Minecraft-like Game v3 (Physics, Jump/Fly & Block Selector)</title>
     <style>
       body {
         margin: 0;
@@ -50,12 +50,12 @@
     <div id="errorLog"></div>
     <!-- All code as an ES module -->
     <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.173.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/"
-            }
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.173.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/"
         }
+      }
     </script>
 
     <script type="module">
@@ -63,7 +63,7 @@
       import { VRButton } from 'three/addons/webxr/VRButton.js';
       import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
-      window.console.log("starting code module");
+      console.log("starting code module");
       const errorLog = document.getElementById("errorLog");
       function showError(msg) {
         errorLog.innerText = msg;
@@ -91,7 +91,9 @@
         0.1,
         1000
       );
-      camera.position.set(0, 1.6, 0);
+      // Start the player above the floor (chunk coordinates)
+      player.position.set(32, 33, 32);
+      camera.position.set(0, 0, 0);
       player.add(camera);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -100,7 +102,7 @@
       document.body.appendChild(renderer.domElement);
       document.body.appendChild(VRButton.createButton(renderer));
 
-      // --- Create a Noise Texture with Bigger Pixels ---
+      // --- Generate a Noise Texture (unchanged) ---
       function generateNoiseTexture() {
         const size = 32;
         const canvas = document.createElement("canvas");
@@ -123,12 +125,44 @@
       }
       const noiseTexture = generateNoiseTexture();
 
-      // --- Create the Voxel Floor (and dirt layers) ---
-      const cubeSize = 1;
-      const gridSize = 64;
-      const levels = 6; // level 0: grass; levels 1-5: dirt
-      const offset = gridSize / 2;
+      // --- Define Chunk Dimensions & Create Chunk Data Structure ---
+      const CHUNK_WIDTH = 64;
+      const CHUNK_HEIGHT = 128;
+      const CHUNK_DEPTH = 64;
+      const chunk = [];
+      for (let x = 0; x < CHUNK_WIDTH; x++) {
+        chunk[x] = [];
+        for (let y = 0; y < CHUNK_HEIGHT; y++) {
+          chunk[x][y] = new Array(CHUNK_DEPTH).fill(null);
+        }
+      }
 
+      // --- Initialize Terrain in the Chunk ---
+      // Underground: y = 16 ... 31 filled with dirt
+      // Floor: y = 32 filled with grass
+      for (let x = 0; x < CHUNK_WIDTH; x++) {
+        for (let z = 0; z < CHUNK_DEPTH; z++) {
+          for (let y = 16; y < 32; y++) {
+            chunk[x][y][z] = { type: "dirt" };
+          }
+          chunk[x][32][z] = { type: "grass" };
+        }
+      }
+
+      // --- Build Mapping Arrays for Static Blocks (for initial terrain) ---
+      const grassMapping = [];
+      const dirtMapping = [];
+      for (let x = 0; x < CHUNK_WIDTH; x++) {
+        for (let z = 0; z < CHUNK_DEPTH; z++) {
+          grassMapping.push({ x: x, y: 32, z: z });
+          for (let y = 16; y < 32; y++) {
+            dirtMapping.push({ x: x, y: y, z: z });
+          }
+        }
+      }
+
+      // --- Create InstancedMeshes for Static Blocks ---
+      const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
       const grassMaterial = new THREE.MeshStandardMaterial({
         color: 0x66aa66,
         map: noiseTexture,
@@ -137,49 +171,150 @@
         color: 0x8b4513,
         map: noiseTexture,
       });
-      const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+      const grassInstancedMesh = new THREE.InstancedMesh(
+        cubeGeometry,
+        grassMaterial,
+        grassMapping.length
+      );
+      grassInstancedMesh.name = "grass";
+      const dirtInstancedMesh = new THREE.InstancedMesh(
+        cubeGeometry,
+        dirtMaterial,
+        dirtMapping.length
+      );
+      dirtInstancedMesh.name = "dirt";
 
-      // Grass layer (top)
-      const grassCount = gridSize * gridSize;
-      const grassMesh = new THREE.InstancedMesh(cubeGeometry, grassMaterial, grassCount);
-      let index = 0;
       const dummy = new THREE.Object3D();
-      for (let i = 0; i < gridSize; i++) {
-        for (let j = 0; j < gridSize; j++) {
-          dummy.position.set(i - offset + 0.5, -0.5, j - offset + 0.5);
-          dummy.updateMatrix();
-          grassMesh.setMatrixAt(index++, dummy.matrix);
-        }
+      for (let i = 0; i < grassMapping.length; i++) {
+        const pos = grassMapping[i];
+        dummy.position.set(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5);
+        dummy.updateMatrix();
+        grassInstancedMesh.setMatrixAt(i, dummy.matrix);
       }
-      scene.add(grassMesh);
+      for (let i = 0; i < dirtMapping.length; i++) {
+        const pos = dirtMapping[i];
+        dummy.position.set(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5);
+        dummy.updateMatrix();
+        dirtInstancedMesh.setMatrixAt(i, dummy.matrix);
+      }
+      grassInstancedMesh.instanceMatrix.needsUpdate = true;
+      dirtInstancedMesh.instanceMatrix.needsUpdate = true;
+      scene.add(grassInstancedMesh);
+      scene.add(dirtInstancedMesh);
 
-      // Dirt layers (levels 1-5)
-      const dirtLayers = levels - 1;
-      const dirtCount = gridSize * gridSize * dirtLayers;
-      const dirtMesh = new THREE.InstancedMesh(cubeGeometry, dirtMaterial, dirtCount);
-      index = 0;
-      for (let level = 1; level < levels; level++) {
-        const yPos = -(level + 0.5);
-        for (let i = 0; i < gridSize; i++) {
-          for (let j = 0; j < gridSize; j++) {
-            dummy.position.set(i - offset + 0.5, yPos, j - offset + 0.5);
-            dummy.updateMatrix();
-            dirtMesh.setMatrixAt(index++, dummy.matrix);
-          }
-        }
-      }
-      scene.add(dirtMesh);
+      // --- Dictionary for Dynamic Blocks (player-placed) ---
+      const dynamicBlocks = {};
 
       // --- Lighting ---
       const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
       hemiLight.position.set(0, 20, 0);
       scene.add(hemiLight);
 
+      // --- Global Physics & Control Variables ---
+      const clock = new THREE.Clock();
+      let playerVelocity = new THREE.Vector3(0, 0, 0);
+      let playerOnGround = false;
+      const gravity = -10;  // adjust as needed
+      const jumpSpeed = 7;
+      let isFlying = false;
+      let lastAPressTime = 0;
+      let prevAPressed = false;
+      const doubleTapThreshold = 300; // in milliseconds
+
+      const moveSpeed = 0.2;
+      const flySpeed = 0.3;
+      const turnSpeed = 0.05;
+
+      // --- Player Collision Settings ---
+      const playerRadius = 0.3; // half-width of player (x,z)
+      const playerHeight = 1.8; // player height
+
+      // Helper: standard AABB intersection (if boundaries touch, not a collision)
+      function intersectsAABB(aMin, aMax, bMin, bMax) {
+        return (
+          aMin.x < bMax.x &&
+          aMax.x > bMin.x &&
+          aMin.y < bMax.y &&
+          aMax.y > bMin.y &&
+          aMin.z < bMax.z &&
+          aMax.z > bMin.z
+        );
+      }
+
+      // Returns true if the player’s AABB at position pos would intersect any solid block.
+      function collidesAtPosition(pos) {
+        const playerMin = new THREE.Vector3(
+          pos.x - playerRadius,
+          pos.y,
+          pos.z - playerRadius
+        );
+        const playerMax = new THREE.Vector3(
+          pos.x + playerRadius,
+          pos.y + playerHeight,
+          pos.z + playerRadius
+        );
+        const minX = Math.floor(playerMin.x);
+        const maxX = Math.floor(playerMax.x);
+        const minY = Math.floor(playerMin.y);
+        const maxY = Math.floor(playerMax.y);
+        const minZ = Math.floor(playerMin.z);
+        const maxZ = Math.floor(playerMax.z);
+        for (let i = minX; i <= maxX; i++) {
+          for (let j = minY; j <= maxY; j++) {
+            for (let k = minZ; k <= maxZ; k++) {
+              if (
+                i < 0 ||
+                i >= CHUNK_WIDTH ||
+                j < 0 ||
+                j >= CHUNK_HEIGHT ||
+                k < 0 ||
+                k >= CHUNK_DEPTH
+              )
+                continue;
+              if (chunk[i][j][k] !== null) {
+                const blockMin = new THREE.Vector3(i, j, k);
+                const blockMax = new THREE.Vector3(i + 1, j + 1, k + 1);
+                if (intersectsAABB(playerMin, playerMax, blockMin, blockMax)) {
+                  return true;
+                }
+              }
+            }
+          }
+        }
+        return false;
+      }
+
+      // --- Block Type Selector Setup ---
+      // Define available block types (you can add more later)
+      const availableBlockTypes = [
+        { type: "grass", color: 0x66aa66, material: grassMaterial },
+        { type: "dirt", color: 0x8b4513, material: dirtMaterial },
+        { type: "dynamic", color: 0xffffff, material: new THREE.MeshStandardMaterial({ color: 0xffffff }) }
+      ];
+      let selectedBlockType = availableBlockTypes[0].type;
+
+      // Create a mini block selector panel (attached to the camera so it overlays the console)
+      const blockSelectorPanel = new THREE.Group();
+      blockSelectorPanel.name = "blockSelectorPanel";
+      const miniCubeSize = 0.2;
+      const miniCubeGeometry = new THREE.BoxGeometry(miniCubeSize, miniCubeSize, miniCubeSize);
+      const miniCubes = [];
+      for (let i = 0; i < availableBlockTypes.length; i++) {
+        const bt = availableBlockTypes[i];
+        const miniMaterial = bt.material.clone();
+        const miniCube = new THREE.Mesh(miniCubeGeometry, miniMaterial);
+        miniCube.userData.blockType = bt.type;
+        miniCube.position.set((i - (availableBlockTypes.length - 1) / 2) * (miniCubeSize + 0.1), 0, 0);
+        blockSelectorPanel.add(miniCube);
+        miniCubes.push(miniCube);
+      }
+
+      // Create a selected block display (attached to the right controller)
+      let selectedBlockDisplay = new THREE.Mesh(miniCubeGeometry, availableBlockTypes[0].material.clone());
+      selectedBlockDisplay.name = "selectedBlockDisplay";
+
       // --- Game State & In-VR Play Button ---
       let gameStarted = false;
-      const cubes = []; // Array to hold cubes added during gameplay
-
-      // Create a play button and add it to the camera so it always appears in front of the user.
       const playButtonGeometry = new THREE.PlaneGeometry(0.6, 0.3);
       const playButtonMaterial = new THREE.MeshBasicMaterial({ color: 0x00aa00 });
       const playButton = new THREE.Mesh(playButtonGeometry, playButtonMaterial);
@@ -195,17 +330,8 @@
       let leftController = controller1;
       let rightController = controller2;
       function assignControllers() {
+        // (We leave this empty to avoid constant reassignments.)
         return;
-        // Removed the early return so we can actually assign based on handedness.
-        if (controller1.userData.handedness && controller2.userData.handedness) {
-          if (controller1.userData.handedness === "left") {
-            leftController = controller1;
-            rightController = controller2;
-          } else {
-            leftController = controller2;
-            rightController = controller1;
-          }
-        }
       }
 
       function setupController(controller) {
@@ -214,11 +340,9 @@
           this.userData.handedness = handedness;
           this.userData.gamepad = gamepad;
           assignControllers();
-          // For the right controller, add the selectstart listener for placing cubes.
           if (handedness === "right") {
             this.addEventListener("selectstart", onSelectStart);
           }
-          // --- Add a simple visual ray to the controller ---
           const rayGeometry = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(0, 0, 0),
             new THREE.Vector3(0, 0, -1),
@@ -237,7 +361,7 @@
       setupController(controller1);
       setupController(controller2);
 
-      // --- Create the VR Log Box ---
+      // --- Create the VR Log Box (unchanged) ---
       const logCanvas = document.createElement("canvas");
       logCanvas.width = 400;
       logCanvas.height = 400;
@@ -270,7 +394,6 @@
         }
         logTexture.needsUpdate = true;
       }
-
       function appendLog(text) {
         logLines.push(text);
         if (logLines.length > 25) {
@@ -280,11 +403,10 @@
       }
       window.appendLog = appendLog;
 
-      // --- Right Controller "select" (Trigger) Handling for placing cubes ---
+      // --- Right Controller "select" (Trigger) Handling for Adding Blocks ---
       function onSelectStart() {
         if (!rightController) return;
         if (!gameStarted) {
-          // Raycast from right controller to see if the play button is hit.
           const tempMatrix = new THREE.Matrix4();
           tempMatrix.identity().extractRotation(rightController.matrixWorld);
           const raycaster = new THREE.Raycaster();
@@ -300,113 +422,275 @@
           }
         }
         if (gameStarted) {
-          // Cast a ray from the right controller to place a cube.
+          // Raycast for block placement against static and dynamic blocks.
           const tempMatrix = new THREE.Matrix4();
           tempMatrix.identity().extractRotation(rightController.matrixWorld);
           const raycaster = new THREE.Raycaster();
           raycaster.ray.origin.setFromMatrixPosition(rightController.matrixWorld);
           raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-          // Include floor/dirt and previously placed cubes in the raycast.
-          const objectsToIntersect = [grassMesh, dirtMesh, ...cubes];
+          const objectsToIntersect = [grassInstancedMesh, dirtInstancedMesh];
+          for (const key in dynamicBlocks) {
+            objectsToIntersect.push(dynamicBlocks[key]);
+          }
           const intersects = raycaster.intersectObjects(objectsToIntersect, false);
           if (intersects.length > 0) {
             const intersect = intersects[0];
-            // Offset by half a block in the direction of the face normal and snap to grid.
             let newPos = intersect.point.clone().add(intersect.face.normal.clone().multiplyScalar(0.5));
-            newPos.x = Math.floor(newPos.x) + 0.5;
-            newPos.y = Math.floor(newPos.y) + 0.5;
-            newPos.z = Math.floor(newPos.z) + 0.5;
-            
-            // Create a new cube (using the same cubeGeometry of size 1)
-            const blockMaterial = new THREE.MeshStandardMaterial({
-              color: Math.random() * 0xffffff,
-            });
+            newPos.x = Math.floor(newPos.x);
+            newPos.y = Math.floor(newPos.y);
+            newPos.z = Math.floor(newPos.z);
+            if (
+              newPos.x < 0 ||
+              newPos.x >= CHUNK_WIDTH ||
+              newPos.y < 0 ||
+              newPos.y >= CHUNK_HEIGHT ||
+              newPos.z < 0 ||
+              newPos.z >= CHUNK_DEPTH
+            ) {
+              appendLog("Block position out of bounds");
+              return;
+            }
+            if (chunk[newPos.x][newPos.y][newPos.z] !== null) {
+              appendLog("Block already exists at that position");
+              return;
+            }
+            // Use the currently selected block type.
+            const bt = availableBlockTypes.find(b => b.type === selectedBlockType);
+            let blockMaterial;
+            if (selectedBlockType === "dynamic") {
+              blockMaterial = new THREE.MeshStandardMaterial({ color: bt.color });
+            } else {
+              blockMaterial = bt.material.clone();
+            }
             const block = new THREE.Mesh(cubeGeometry, blockMaterial);
-            block.position.copy(newPos);
+            block.position.set(newPos.x + 0.5, newPos.y + 0.5, newPos.z + 0.5);
+            block.userData.dynamic = true;
             scene.add(block);
-            cubes.push(block);
-            appendLog(`Cube added at (${newPos.x.toFixed(2)}, ${newPos.y.toFixed(2)}, ${newPos.z.toFixed(2)})`);
-            console.log("Cube added", newPos);
+            dynamicBlocks[`${newPos.x},${newPos.y},${newPos.z}`] = block;
+            chunk[newPos.x][newPos.y][newPos.z] = { type: selectedBlockType, color: bt.color };
+            appendLog(`Block (${selectedBlockType}) added at (${newPos.x}, ${newPos.y}, ${newPos.z})`);
           } else {
-            appendLog("No valid surface for cube placement");
-            console.log("No valid intersection for cube placement");
+            appendLog("No valid surface for block placement");
           }
         }
       }
 
-      // --- Animation Loop & Controller Polling ---
+      // --- Right Controller Deletion Handling (B button) ---
       let prevBPressed = false;
+
+      // --- Add XR Controller Models using XRControllerModelFactory ---
+      const controllerGrip1 = renderer.xr.getControllerGrip(0);
+      const controllerGrip2 = renderer.xr.getControllerGrip(1);
+      const controllerModelFactory = new XRControllerModelFactory();
+      controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+      controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+      player.add(controllerGrip1);
+      player.add(controllerGrip2);
+
+      // --- Attach the Selected Block Display to the Right Controller ---
+      rightController.add(selectedBlockDisplay);
+      selectedBlockDisplay.position.set(0, -0.1, -0.3);
+
+      // --- Animation Loop, Movement, Physics, UI Raycasting & Controller Polling ---
       renderer.setAnimationLoop(() => {
         assignControllers();
+        const delta = clock.getDelta();
 
-        // Attach the log box to the left controller if not already attached.
-        if (leftController && !leftController.getObjectByName("logBox")) {
-          leftController.add(logMesh);
-          logMesh.position.set(0, 0.1, 0);
-          logMesh.rotation.x = -Math.PI / 4;
+        // --- Vertical Physics Update (Gravity & Jump/Ceiling Collision) ---
+        if (!isFlying) {
+          playerVelocity.y += gravity * delta;
+          let desiredY = player.position.y + playerVelocity.y * delta;
+          let testPos = player.position.clone();
+          testPos.y = desiredY;
+          if (collidesAtPosition(testPos)) {
+            // Collision: prevent upward or downward movement.
+            desiredY = player.position.y;
+            playerVelocity.y = 0;
+            playerOnGround = true;
+          } else {
+            playerOnGround = false;
+          }
+          player.position.y = desiredY;
+        } else {
+          // In fly mode, use the right controller’s Y axis (axis 3) for vertical movement.
+          if (rightController.userData && rightController.userData.gamepad) {
+            const gp = rightController.userData.gamepad;
+            let desiredY = player.position.y + gp.axes[3]*-1 * flySpeed;
+            let testPos = player.position.clone();
+            testPos.y = desiredY;
+            if (!collidesAtPosition(testPos)) {
+              player.position.y = desiredY;
+            }
+          }
+          playerVelocity.y = 0;
+          playerOnGround = false;
         }
 
-        // --- Left Controller Movement (thumbstick) for free movement ---
+        // --- Horizontal Movement with Collision (Left Controller) ---
         if (leftController && leftController.userData && leftController.userData.gamepad) {
           const gp = leftController.userData.gamepad;
-          const x = gp.axes[2] || 0;
-          const y = gp.axes[3] || 0;
+          const yAxis = gp.axes[3] || 0;
+          const xAxis = gp.axes[2] || 0;
+          // Use the camera's direction for forward/backward:
+          const cameraForward = new THREE.Vector3();
+          camera.getWorldDirection(cameraForward);
+          cameraForward.y = 0;
+          cameraForward.normalize();
+          // Right direction from world up cross forward:
+          const cameraRight = new THREE.Vector3();
+          cameraRight.crossVectors(new THREE.Vector3(0, 1, 0), cameraForward).normalize();
 
-          const grapButton = gp.buttons[1]; // button grab
-          const tButton = gp.buttons[0]; // button B
-          if(grapButton && grapButton.pressed){
-            appendLog('Axes x:'+gp.axes[0]+' y:'+gp.axes[1]+' w:'+gp.axes[2]+' z:'+gp.axes[3]);
-          }
-          if(tButton && tButton.pressed){
-            appendLog('gamepad '+JSON.stringify(gp));
-          }
+          // Compute horizontal displacement
+          let dx = cameraForward.x * yAxis * moveSpeed + cameraRight.x * (isFlying ? 0 : xAxis * moveSpeed);
+          let dz = cameraForward.z * yAxis * moveSpeed + cameraRight.z * (isFlying ? 0 : xAxis * moveSpeed);
 
-          const moveSpeed = 0.5;
-          // Calculate movement relative to the player's current rotation.
-          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
-          const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
-          // Multiply and add (note: using cloned vectors so the originals remain unchanged).
-          player.position.add(forward.clone().multiplyScalar(y * moveSpeed));
-          player.position.add(right.clone().multiplyScalar(x * moveSpeed));
+          let desiredX = player.position.x + dx;
+          let testPosX = player.position.clone();
+          testPosX.x = desiredX;
+          if (!collidesAtPosition(testPosX)) {
+            player.position.x = desiredX;
+          }
+          let desiredZ = player.position.z + dz;
+          let testPosZ = player.position.clone();
+          testPosZ.z = desiredZ;
+          if (!collidesAtPosition(testPosZ)) {
+            player.position.z = desiredZ;
+          }
+          // In fly mode, use horizontal input to turn.
+          if (isFlying) {
+            player.rotation.y -= xAxis * turnSpeed;
+          }
         }
 
-        // --- Right Controller Turning (thumbstick) ---
+        // --- Right Controller: Turning, Deletion (B Button) & Jump/Fly (A Button) ---
         if (rightController && rightController.userData && rightController.userData.gamepad) {
           const gp = rightController.userData.gamepad;
-          const turnSpeed = 0.05;
-          const turnX = gp.axes[2] || 0;
-          player.rotation.y -= turnX * turnSpeed;
-
-          // --- Deleting cubes with the B button ---
-          const bButton = gp.buttons[5]; // button B
-          //const aButton = gp.buttons[4]; // button A
+          if (!isFlying) {
+            const turnX = gp.axes[2] || 0;
+            player.rotation.y -= turnX * turnSpeed;
+          }
+          // Deletion with B button (button index 5)
+          const bButton = gp.buttons[5];
           if (bButton) {
             if (bButton.pressed && !prevBPressed) {
-              // Cast a ray to look for a placed cube to remove.
               const tempMatrix = new THREE.Matrix4();
               tempMatrix.identity().extractRotation(rightController.matrixWorld);
               const raycaster = new THREE.Raycaster();
               raycaster.ray.origin.setFromMatrixPosition(rightController.matrixWorld);
               raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-              // Check only the cubes array (i.e. cubes placed during gameplay)
-              const intersects = raycaster.intersectObjects(cubes, false);
+              const objectsToIntersect = [grassInstancedMesh, dirtInstancedMesh];
+              for (const key in dynamicBlocks) {
+                objectsToIntersect.push(dynamicBlocks[key]);
+              }
+              const intersects = raycaster.intersectObjects(objectsToIntersect, false);
               if (intersects.length > 0) {
-                const cubeToRemove = intersects[0].object;
-                scene.remove(cubeToRemove);
-                const idx = cubes.indexOf(cubeToRemove);
-                if (idx !== -1) cubes.splice(idx, 1);
-                appendLog("Cube removed");
-                console.log("Cube removed");
+                const intersect = intersects[0];
+                if (intersect.object === grassInstancedMesh) {
+                  const instanceId = intersect.instanceId;
+                  const pos = grassMapping[instanceId];
+                  chunk[pos.x][pos.y][pos.z] = null;
+                  dummy.position.set(10000, 10000, 10000);
+                  dummy.updateMatrix();
+                  grassInstancedMesh.setMatrixAt(instanceId, dummy.matrix);
+                  grassInstancedMesh.instanceMatrix.needsUpdate = true;
+                  appendLog(`Removed grass block at (${pos.x},${pos.y},${pos.z})`);
+                } else if (intersect.object === dirtInstancedMesh) {
+                  const instanceId = intersect.instanceId;
+                  const pos = dirtMapping[instanceId];
+                  chunk[pos.x][pos.y][pos.z] = null;
+                  dummy.position.set(10000, 10000, 10000);
+                  dummy.updateMatrix();
+                  dirtInstancedMesh.setMatrixAt(instanceId, dummy.matrix);
+                  dirtInstancedMesh.instanceMatrix.needsUpdate = true;
+                  appendLog(`Removed dirt block at (${pos.x},${pos.y},${pos.z})`);
+                } else if (intersect.object.userData.dynamic) {
+                  const posStr = Object.keys(dynamicBlocks).find(key => dynamicBlocks[key] === intersect.object);
+                  if (posStr) {
+                    const [x, y, z] = posStr.split(",").map(Number);
+                    chunk[x][y][z] = null;
+                    scene.remove(intersect.object);
+                    delete dynamicBlocks[posStr];
+                    appendLog(`Removed dynamic block at (${x},${y},${z})`);
+                  }
+                }
               } else {
-                appendLog("No cube to remove");
-                console.log("No cube found for removal");
+                appendLog("No block found for removal");
               }
               prevBPressed = true;
             }
             if (!bButton.pressed) {
               prevBPressed = false;
             }
+
+            // --- Jump / Fly Mode with A button (assumed index 4) ---
+            const aButton = gp.buttons[4];
+            if (aButton) {
+              if (aButton.pressed && !prevAPressed) {
+                const now = performance.now();
+                if (now - lastAPressTime < doubleTapThreshold) {
+                  isFlying = !isFlying;
+                  appendLog("Fly mode " + (isFlying ? "enabled" : "disabled"));
+                } else {
+                  if (!isFlying && playerOnGround) {
+                    // Before jumping, check if a collision would occur overhead.
+                    let testPos = player.position.clone();
+                    testPos.y += jumpSpeed * delta;
+                    if (!collidesAtPosition(testPos)) {
+                      playerVelocity.y = jumpSpeed;
+                      playerOnGround = false;
+                    } else {
+                      appendLog("Block overhead: cannot jump");
+                    }
+                  }
+                }
+                lastAPressTime = now;
+                prevAPressed = true;
+              }
+              if (!aButton.pressed) {
+                prevAPressed = false;
+              }
+            }
           }
+
+          // --- Block Selector UI: Raycast from Right Controller onto mini cubes ---
+          {
+            const tempMatrix = new THREE.Matrix4();
+            tempMatrix.identity().extractRotation(rightController.matrixWorld);
+            const raycaster = new THREE.Raycaster();
+            raycaster.ray.origin.setFromMatrixPosition(rightController.matrixWorld);
+            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+            const intersects = raycaster.intersectObjects(miniCubes, false);
+            if (intersects.length > 0) {
+              const hit = intersects[0].object;
+              const newSelectedType = hit.userData.blockType;
+              if (newSelectedType !== selectedBlockType) {
+                selectedBlockType = newSelectedType;
+                appendLog("Selected block type: " + selectedBlockType);
+                const bt = availableBlockTypes.find(b => b.type === selectedBlockType);
+                if (bt) {
+                  selectedBlockDisplay.material = bt.material.clone();
+                }
+              }
+            }
+          }
+        }
+
+        // --- Collision Rescue: If player falls beneath floor 1, reposition in chunk at level 33 ---
+        if (player.position.y < 1) {
+          const randomX = Math.floor(Math.random() * CHUNK_WIDTH);
+          const randomZ = Math.floor(Math.random() * CHUNK_DEPTH);
+          player.position.set(randomX + 0.5, 33, randomZ + 0.5);
+          appendLog("Player fell, repositioning...");
+        }
+
+        // --- Attach the Log Box and Block Selector Panel to the Left Controller ---
+        if (leftController && !leftController.getObjectByName("logBox")) {
+          leftController.add(logMesh);
+          logMesh.position.set(0, 0.1, 0);
+          logMesh.rotation.x = -Math.PI / 4;
+          leftController.add(blockSelectorPanel);
+          blockSelectorPanel.position.set(0, 0.5, -1.5);
+          blockSelectorPanel.rotation.x = -Math.PI / 4;
         }
 
         renderer.render(scene, camera);
@@ -444,15 +728,6 @@
           showError("WebXR not available.");
         }
       });
-
-      // --- Add XR Controller Models using XRControllerModelFactory ---
-      const controllerGrip1 = renderer.xr.getControllerGrip(0);
-      const controllerGrip2 = renderer.xr.getControllerGrip(1);
-      const controllerModelFactory = new XRControllerModelFactory();
-      controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
-      controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
-      player.add(controllerGrip1);
-      player.add(controllerGrip2);
     </script>
   </body>
 </html>
