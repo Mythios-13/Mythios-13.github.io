@@ -214,7 +214,7 @@
       const clock = new THREE.Clock();
       let playerVelocity = new THREE.Vector3(0, 0, 0);
       let playerOnGround = false;
-      const gravity = -0.1;  // adjust as needed
+      const gravity = -10;  // adjust as needed
       const jumpSpeed = 7;
       let isFlying = false;
       let lastAPressTime = 0;
@@ -223,6 +223,7 @@
 
       const moveSpeed = 0.2;
       const flySpeed = 0.5;
+      const turnSpeed = 0.05;
 
       // --- Block Type Selector Setup ---
       // Define available block types (you can add more later)
@@ -248,7 +249,6 @@
         blockSelectorPanel.add(miniCube);
         miniCubes.push(miniCube);
       }
-      //camera.add(blockSelectorPanel);
       
 
       // Create a selected block display (attached to the right controller)
@@ -459,7 +459,6 @@
               }
             }
           }
-          console.log('maxBlockTop ' +maxBlockTop);
           if (newY < maxBlockTop) {
             newY = maxBlockTop;
             playerVelocity.y = 0;
@@ -482,22 +481,29 @@
         // --- Left Controller Movement (thumbstick) for free horizontal movement ---
         if (leftController && leftController.userData && leftController.userData.gamepad) {
           const gp = leftController.userData.gamepad;
-          const x = gp.axes[2] || 0;
           const y = gp.axes[3] || 0;
-          
+          const x = gp.axes[2] || 0;
+          // y displacement
           const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
           const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
           player.position.add(forward.clone().multiplyScalar(y * moveSpeed));
-          player.position.add(right.clone().multiplyScalar(x * moveSpeed));
+
+          if(!isFlying) {
+            player.position.add(right.clone().multiplyScalar(x * moveSpeed));
+          } else {
+            player.rotation.y -= x * turnSpeed;
+          }
+          
         }
 
         // --- Right Controller: Turning, Deletion (B Button) & Jump/Fly (A Button) ---
         if (rightController && rightController.userData && rightController.userData.gamepad) {
           const gp = rightController.userData.gamepad;
-          const turnSpeed = 0.05;
-          const turnX = gp.axes[2] || 0;
-          player.rotation.y -= turnX * turnSpeed;
-
+          
+          if(!isFlying) {
+            const turnX = gp.axes[2] || 0;
+            player.rotation.y -= turnX * turnSpeed;
+          }
           // Deletion with B button (button index 5)
           const bButton = gp.buttons[5];
           if (bButton) {
