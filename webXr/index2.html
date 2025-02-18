@@ -349,16 +349,16 @@
         // --- Left Controller Movement (thumbstick) for free movement ---
         if (leftController && leftController.userData && leftController.userData.gamepad) {
           const gp = leftController.userData.gamepad;
-          const x = gp.axes[0] || 0;
-          const y = gp.axes[1] || 0;
+          const x = gp.axes[2] || 0;
+          const y = gp.axes[3] || 0;
 
           const grapButton = gp.buttons[1]; // button grab
           const tButton = gp.buttons[0]; // button B
           if(grapButton && grapButton.pressed){
-            appendLog('Axes x:'+gp.axes[0]+' y:'+gp.axes[1]);
+            appendLog('Axes x:'+gp.axes[0]+' y:'+gp.axes[1]+' w:'+gp.axes[2]+' z:'+gp.axes[3]);
           }
           if(tButton && tButton.pressed){
-            appendLog('gamepad'+JSON.stringify(gp));
+            appendLog('gamepad '+JSON.stringify(gp));
           }
 
           const moveSpeed = 0.5;
@@ -374,7 +374,7 @@
         if (rightController && rightController.userData && rightController.userData.gamepad) {
           const gp = rightController.userData.gamepad;
           const turnSpeed = 0.05;
-          const turnX = gp.axes[0] || 0;
+          const turnX = gp.axes[2] || 0;
           player.rotation.y -= turnX * turnSpeed;
 
           // --- Deleting cubes with the B button ---
