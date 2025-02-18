@@ -296,7 +296,7 @@
       // Create a mini block selector panel (attached to the camera so it overlays the console)
       const blockSelectorPanel = new THREE.Group();
       blockSelectorPanel.name = "blockSelectorPanel";
-      const miniCubeSize = 0.2;
+      const miniCubeSize = 0.1;
       const miniCubeGeometry = new THREE.BoxGeometry(miniCubeSize, miniCubeSize, miniCubeSize);
       const miniCubes = [];
       for (let i = 0; i < availableBlockTypes.length; i++) {
@@ -529,8 +529,8 @@
         // --- Horizontal Movement with Collision (Left Controller) ---
         if (leftController && leftController.userData && leftController.userData.gamepad) {
           const gp = leftController.userData.gamepad;
-          const yAxis = gp.axes[3] || 0;
-          const xAxis = gp.axes[2] || 0;
+          const yAxis = gp.axes[3]*-1 || 0;
+          const xAxis = gp.axes[2]*-1 || 0;
           // Use the camera's direction for forward/backward:
           const cameraForward = new THREE.Vector3();
           camera.getWorldDirection(cameraForward);
@@ -689,7 +689,7 @@
           logMesh.position.set(0, 0.1, 0);
           logMesh.rotation.x = -Math.PI / 4;
           leftController.add(blockSelectorPanel);
-          blockSelectorPanel.position.set(0, 0.5, -1.5);
+          blockSelectorPanel.position.set(0, 0.5, -2);
           blockSelectorPanel.rotation.x = -Math.PI / 4;
         }
 
