@@ -214,12 +214,15 @@
       const clock = new THREE.Clock();
       let playerVelocity = new THREE.Vector3(0, 0, 0);
       let playerOnGround = false;
-      const gravity = -20;  // adjust as needed
+      const gravity = -0.1;  // adjust as needed
       const jumpSpeed = 7;
       let isFlying = false;
       let lastAPressTime = 0;
       let prevAPressed = false;
       const doubleTapThreshold = 300; // in milliseconds
+
+      const moveSpeed = 0.2;
+      const flySpeed = 0.5;
 
       // --- Block Type Selector Setup ---
       // Define available block types (you can add more later)
@@ -245,8 +248,8 @@
         blockSelectorPanel.add(miniCube);
         miniCubes.push(miniCube);
       }
-      camera.add(blockSelectorPanel);
-      blockSelectorPanel.position.set(0, 0.5, -1);
+      //camera.add(blockSelectorPanel);
+      
 
       // Create a selected block display (attached to the right controller)
       let selectedBlockDisplay = new THREE.Mesh(
@@ -450,12 +453,13 @@
           let maxBlockTop = 0;
           for (let y = 0; y < CHUNK_HEIGHT; y++) {
             if (chunk[gridX] && chunk[gridX][y] && chunk[gridX][y][gridZ] !== null) {
-              const blockTop = y + 1;
-              if (blockTop > maxBlockTop && blockTop <= newY) {
+              const blockTop = y+1;
+              if (blockTop > maxBlockTop){// && blockTop <= newY) {
                 maxBlockTop = blockTop;
               }
             }
           }
+          console.log('maxBlockTop ' +maxBlockTop);
           if (newY < maxBlockTop) {
             newY = maxBlockTop;
             playerVelocity.y = 0;
@@ -469,7 +473,6 @@
           if (rightController.userData && rightController.userData.gamepad) {
             const gp = rightController.userData.gamepad;
             const verticalInput = gp.axes[3] || 0;
-            const flySpeed = 0.5;
             player.position.y += verticalInput * flySpeed;
           }
           playerVelocity.y = 0;
@@ -480,9 +483,9 @@
         if (leftController && leftController.userData && leftController.userData.gamepad) {
           const gp = leftController.userData.gamepad;
           const x = gp.axes[2] || 0;
-          const y = gp.axes[3]*-1 || 0;
-          const moveSpeed = 0.5;
-          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+          const y = gp.axes[3] || 0;
+          
+          const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(player.quaternion);
           const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
           player.position.add(forward.clone().multiplyScalar(y * moveSpeed));
           player.position.add(right.clone().multiplyScalar(x * moveSpeed));
@@ -607,8 +610,13 @@
         // --- Attach the Log Box to the Left Controller (if not already attached) ---
         if (leftController && !leftController.getObjectByName("logBox")) {
           leftController.add(logMesh);
+          
           logMesh.position.set(0, 0.1, 0);
           logMesh.rotation.x = -Math.PI / 4;
+
+          leftController.add(blockSelectorPanel);
+          blockSelectorPanel.position.set(0, 0.5, -1);
+          blockSelectorPanel.rotation.x = -Math.PI / 4;
         }
 
         renderer.render(scene, camera);
