@@ -417,10 +417,10 @@
       });
       // Create a highlight for mini selector cubes (1.2× size).
       miniCubeHighlightMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(miniCubeSize, miniCubeSize, miniCubeSize),
-        new THREE.MeshBasicMaterial({ color: 0x00ffff, opacity: 0.3, transparent: true, depthTest: false })
+        new THREE.BoxGeometry(miniCubeSize *1.2, miniCubeSize*1.2, miniCubeSize*1.2),
+        new THREE.MeshBasicMaterial({ color: 0x00ffff, opacity: 0.1, transparent: true, depthTest: false })
       );
-      miniCubeHighlightMesh.scale.set(1.2, 1.2, 1.2);
+      //miniCubeHighlightMesh.scale.set(1.2, 1.2, 1.2);
       miniCubeHighlightMesh.visible = false;
       blockSelectorPanel.add(miniCubeHighlightMesh);
 
@@ -667,6 +667,12 @@
         } else {
           miniCubeHighlightMesh.visible = false;
           pointedMiniCube = null;
+        }
+        /*
+        // This is way too intensive and slows down the whole thing
+        else {
+          miniCubeHighlightMesh.visible = false;
+          pointedMiniCube = null;
           // If not intersecting mini cubes, then check for blocks.
           const intersects = raycaster.intersectObjects([grassInstancedMesh, dirtInstancedMesh, dynamicGroup], true);
           if (intersects.length > 0) {
@@ -704,7 +710,7 @@
             blockHighlightMesh.visible = false;
             placementIndicatorMesh.visible = false;
           }
-        }
+        }*/
       }
 
       /* ---------------------------------------------------------------------------
