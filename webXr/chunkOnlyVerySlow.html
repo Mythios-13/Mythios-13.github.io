@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>WebXR Minecraft-like Game v3 (InstancedMesh + Chunk Only)</title>
+    <title>WebXR Minecraft-like Game v3 (Updated to use only chunk)</title>
     <style>
       body {
         margin: 0;
@@ -83,33 +83,23 @@
       let prevBPressed = false;
       let gameStarted = false;
 
-      // Use a single 3D array for blocks.
-      // For each occupied cell, we store an object.
-      // For static blocks (dirt or grass) we store: { type, instanceId }.
-      // For dynamic blocks we store: { type, mesh }.
+      // Use only one data structure: chunk
+      // chunk[x][y][z] will hold a block mesh (or null if there is no block)
       const chunk = [];
 
-      // --- InstancedMesh Setup for Static Blocks ---
-      // We know that initially we fill y=16..31 with dirt and y=32 with grass.
-      const initialGrassCount = CHUNK_WIDTH * CHUNK_DEPTH; // y=32 only
-      const initialDirtCount = CHUNK_WIDTH * CHUNK_DEPTH * 16; // y=16..31
-      // Allocate extra capacity for new placements.
-      const extraCapacity = 1000;
-      const grassCapacity = initialGrassCount + extraCapacity;
-      const dirtCapacity = initialDirtCount + extraCapacity;
-      let nextGrassInstance = 0;
-      let nextDirtInstance = 0;
+      // Create a group to hold all block meshes
+      const blockGroup = new THREE.Group();
 
-      let grassInstancedMesh, dirtInstancedMesh;
-      let dynamicGroup; // For dynamic blocks (placed as individual meshes)
-
-      // --- Three.js Scene Setup ---
+      /* --- Three.js Scene Setup --- */
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x87ceeb);
       const world = new THREE.Group();
       scene.add(world);
 
-      // Camera & Player
+      // Add blockGroup (holds all blocks) to the world
+      world.add(blockGroup);
+
+      // Player & Camera
       const player = new THREE.Group();
       world.add(player);
       const camera = new THREE.PerspectiveCamera(
@@ -223,7 +213,6 @@
               )
                 continue;
               if (chunk[i][j][k] !== null) {
-                // Create an AABB for the block cell.
                 const blockMin = new THREE.Vector3(i, j, k);
                 const blockMax = new THREE.Vector3(i + 1, j + 1, k + 1);
                 if (intersectsAABB(playerMin, playerMax, blockMin, blockMax)) {
@@ -237,8 +226,10 @@
       }
 
       /* ---------------------------------------------------------------------------
-         Materials, Geometry & Global Dummy Object
+         Initialization Functions
       --------------------------------------------------------------------------- */
+
+      // Create cube geometry and materials for blocks.
       const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
       const grassMaterial = new THREE.MeshStandardMaterial({
         color: 0x66aa66,
@@ -248,68 +239,39 @@
         color: 0x8b4513,
         map: noiseTexture,
       });
-      // For dynamic blocks (using white)
-      const dynamicMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
-
-      // A dummy Object3D for matrix operations.
-      const dummy = new THREE.Object3D();
-
-      /* ---------------------------------------------------------------------------
-         Initialization Functions
-      --------------------------------------------------------------------------- */
 
       /**
        * Initialize the chunk data structure and terrain.
-       * For static blocks (dirt and grass) we record the instance id that will be used in the instanced mesh.
+       * Instead of maintaining separate arrays, we create block meshes,
+       * add them to the blockGroup, and store them in the chunk array.
        */
       function initChunk() {
-        // Create empty chunk 3D array.
+        // Create empty chunk array
         for (let x = 0; x < CHUNK_WIDTH; x++) {
           chunk[x] = [];
           for (let y = 0; y < CHUNK_HEIGHT; y++) {
             chunk[x][y] = new Array(CHUNK_DEPTH).fill(null);
           }
         }
-        // Temporary arrays to store the initial transforms.
-        const dirtTransforms = [];
-        const grassTransforms = [];
-        // Fill underground and floor.
+        // Fill underground (y = 16...31) with dirt blocks and the floor (y = 32) with grass blocks.
         for (let x = 0; x < CHUNK_WIDTH; x++) {
           for (let z = 0; z < CHUNK_DEPTH; z++) {
-            // Dirt blocks from y=16 to 31.
+            // Dirt blocks from y = 16 to 31.
             for (let y = 16; y < 32; y++) {
-              dummy.position.set(x + 0.5, y + 0.5, z + 0.5);
-              dummy.updateMatrix();
-              dirtTransforms.push(dummy.matrix.clone());
-              chunk[x][y][z] = { type: "dirt", instanceId: nextDirtInstance };
-              nextDirtInstance++;
+              const block = new THREE.Mesh(cubeGeometry, dirtMaterial.clone());
+              block.position.set(x + 0.5, y + 0.5, z + 0.5);
+              block.userData = { type: "dirt" };
+              blockGroup.add(block);
+              chunk[x][y][z] = block;
             }
             // Grass block at y = 32.
-            dummy.position.set(x + 0.5, 32 + 0.5, z + 0.5);
-            dummy.updateMatrix();
-            grassTransforms.push(dummy.matrix.clone());
-            chunk[x][32][z] = { type: "grass", instanceId: nextGrassInstance };
-            nextGrassInstance++;
+            const block = new THREE.Mesh(cubeGeometry, grassMaterial.clone());
+            block.position.set(x + 0.5, 32 + 0.5, z + 0.5);
+            block.userData = { type: "grass" };
+            blockGroup.add(block);
+            chunk[x][32][z] = block;
           }
         }
-        // Create instanced meshes with extra capacity.
-        dirtInstancedMesh = new THREE.InstancedMesh(cubeGeometry, dirtMaterial, dirtCapacity);
-        grassInstancedMesh = new THREE.InstancedMesh(cubeGeometry, grassMaterial, grassCapacity);
-        // Set matrices for the initial static blocks.
-        for (let i = 0; i < dirtTransforms.length; i++) {
-          dirtInstancedMesh.setMatrixAt(i, dirtTransforms[i]);
-        }
-        for (let i = 0; i < grassTransforms.length; i++) {
-          grassInstancedMesh.setMatrixAt(i, grassTransforms[i]);
-        }
-        dirtInstancedMesh.instanceMatrix.needsUpdate = true;
-        grassInstancedMesh.instanceMatrix.needsUpdate = true;
-        // Add instanced meshes to the world.
-        world.add(dirtInstancedMesh);
-        world.add(grassInstancedMesh);
-        // Create a group for dynamic blocks.
-        dynamicGroup = new THREE.Group();
-        world.add(dynamicGroup);
       }
 
       /**
@@ -374,7 +336,7 @@
         {
           type: "dynamic",
           color: 0xffffff,
-          material: dynamicMaterial,
+          material: new THREE.MeshStandardMaterial({ color: 0xffffff }),
         },
       ];
       let selectedBlockType = availableBlockTypes[0].type;
@@ -438,10 +400,10 @@
       }
 
       function appendLog(text, force = false) {
-        if (devLogMode || force) {
-          logLines.push(text);
-          if (logLines.length > 25) logLines.shift();
-          updateLogCanvas();
+        if(devLogMode || force){
+            logLines.push(text);
+            if (logLines.length > 25) logLines.shift();
+            updateLogCanvas();
         }
       }
 
@@ -449,7 +411,7 @@
       appendLog("-------------------------------", true);
       appendLog("Right trigger to place blocks", true);
       appendLog("Right B button to erase blocks", true);
-      appendLog("Intersect left blocks to select block", true);
+      appendLog("Intersect left blocs to select block", true);
       appendLog("-------------------------------", true);
       appendLog("Fly mode : double tap right A button", true);
 
@@ -488,9 +450,7 @@
        */
       function placeBlock() {
         const raycaster = createRaycaster(rightController);
-        // Check against static instanced meshes and dynamic group (recursively).
-        const objectsToIntersect = [grassInstancedMesh, dirtInstancedMesh, dynamicGroup];
-        const intersects = raycaster.intersectObjects(objectsToIntersect, true);
+        const intersects = raycaster.intersectObjects(blockGroup.children, false);
         if (intersects.length === 0) {
           appendLog("No valid surface for block placement");
           return;
@@ -503,7 +463,7 @@
         newPos.y = Math.floor(newPos.y);
         newPos.z = Math.floor(newPos.z);
 
-        // Bounds check.
+        // Bounds check
         if (
           newPos.x < 0 ||
           newPos.x >= CHUNK_WIDTH ||
@@ -520,83 +480,39 @@
           return;
         }
         const bt = availableBlockTypes.find((b) => b.type === selectedBlockType);
-        // For dynamic blocks, add an individual mesh.
-        if (selectedBlockType === "dynamic") {
-          const block = new THREE.Mesh(cubeGeometry, bt.material.clone());
-          block.position.set(newPos.x + 0.5, newPos.y + 0.5, newPos.z + 0.5);
-          dynamicGroup.add(block);
-          chunk[newPos.x][newPos.y][newPos.z] = { type: "dynamic", mesh: block };
-          appendLog(`Dynamic block added at (${newPos.x}, ${newPos.y}, ${newPos.z})`);
-        } else if (selectedBlockType === "grass") {
-          // Use the grass instanced mesh.
-          const instanceId = nextGrassInstance++;
-          dummy.position.set(newPos.x + 0.5, newPos.y + 0.5, newPos.z + 0.5);
-          dummy.updateMatrix();
-          grassInstancedMesh.setMatrixAt(instanceId, dummy.matrix);
-          grassInstancedMesh.instanceMatrix.needsUpdate = true;
-          chunk[newPos.x][newPos.y][newPos.z] = { type: "grass", instanceId: instanceId };
-          appendLog(`Grass block added at (${newPos.x}, ${newPos.y}, ${newPos.z})`);
-        } else if (selectedBlockType === "dirt") {
-          // Use the dirt instanced mesh.
-          const instanceId = nextDirtInstance++;
-          dummy.position.set(newPos.x + 0.5, newPos.y + 0.5, newPos.z + 0.5);
-          dummy.updateMatrix();
-          dirtInstancedMesh.setMatrixAt(instanceId, dummy.matrix);
-          dirtInstancedMesh.instanceMatrix.needsUpdate = true;
-          chunk[newPos.x][newPos.y][newPos.z] = { type: "dirt", instanceId: instanceId };
-          appendLog(`Dirt block added at (${newPos.x}, ${newPos.y}, ${newPos.z})`);
-        }
+        const material = (selectedBlockType === "dynamic")
+          ? new THREE.MeshStandardMaterial({ color: bt.color })
+          : bt.material.clone();
+        const block = new THREE.Mesh(cubeGeometry, material);
+        block.position.set(newPos.x + 0.5, newPos.y + 0.5, newPos.z + 0.5);
+        block.userData = { type: selectedBlockType, dynamic: (selectedBlockType === "dynamic") };
+        blockGroup.add(block);
+        chunk[newPos.x][newPos.y][newPos.z] = block;
+        appendLog(`Block (${selectedBlockType}) added at (${newPos.x}, ${newPos.y}, ${newPos.z})`);
       }
 
       /**
        * Handles block deletion when the B button is pressed.
-       * For static blocks, we retrieve the instance matrix from the instanced mesh,
-       * compute the grid coordinate and update chunk; for dynamic blocks, we remove the mesh.
+       * It uses a raycaster to find the block mesh in blockGroup,
+       * then removes it from the scene and updates the chunk data.
        */
       function handleBlockDeletion() {
         const raycaster = createRaycaster(rightController);
-        const objectsToIntersect = [grassInstancedMesh, dirtInstancedMesh, dynamicGroup];
-        const intersects = raycaster.intersectObjects(objectsToIntersect, true);
+        const intersects = raycaster.intersectObjects(blockGroup.children, false);
         if (intersects.length === 0) {
           appendLog("No block found for removal");
           return;
         }
         const intersect = intersects[0];
-        // If the intersected object is from dynamicGroup (individual mesh)
-        if (intersect.object.parent === dynamicGroup) {
-          const block = intersect.object;
-          const pos = new THREE.Vector3(
-            Math.floor(block.position.x - 0.5),
-            Math.floor(block.position.y - 0.5),
-            Math.floor(block.position.z - 0.5)
-          );
-          dynamicGroup.remove(block);
-          chunk[pos.x][pos.y][pos.z] = null;
-          appendLog(`Removed dynamic block at (${pos.x}, ${pos.y}, ${pos.z})`);
-        } else if (intersect.object === grassInstancedMesh || intersect.object === dirtInstancedMesh) {
-          // For static blocks: retrieve the instance matrix to compute the grid coordinate.
-          const isGrass = intersect.object === grassInstancedMesh;
-          const instanceId = intersect.instanceId;
-          dummy.matrix = new THREE.Matrix4();
-          intersect.object.getMatrixAt(instanceId, dummy.matrix);
-          dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
-          const gridX = Math.floor(dummy.position.x - 0.5);
-          const gridY = Math.floor(dummy.position.y - 0.5);
-          const gridZ = Math.floor(dummy.position.z - 0.5);
-          if (
-            chunk[gridX][gridY][gridZ] &&
-            chunk[gridX][gridY][gridZ].instanceId === instanceId &&
-            chunk[gridX][gridY][gridZ].type === (isGrass ? "grass" : "dirt")
-          ) {
-            chunk[gridX][gridY][gridZ] = null;
-            // Move the instance offscreen.
-            dummy.position.set(10000, 10000, 10000);
-            dummy.updateMatrix();
-            intersect.object.setMatrixAt(instanceId, dummy.matrix);
-            intersect.object.instanceMatrix.needsUpdate = true;
-            appendLog(`Removed ${isGrass ? "grass" : "dirt"} block at (${gridX}, ${gridY}, ${gridZ})`);
-          }
-        }
+        const block = intersect.object;
+        const pos = new THREE.Vector3(
+          Math.floor(block.position.x - 0.5),
+          Math.floor(block.position.y - 0.5),
+          Math.floor(block.position.z - 0.5)
+        );
+        blockGroup.remove(block);
+        chunk[pos.x][pos.y][pos.z] = null;
+        appendLog(`Removed block (${block.userData.type}) at (${pos.x}, ${pos.y}, ${pos.z})`);
       }
 
       /* ---------------------------------------------------------------------------
@@ -625,8 +541,6 @@
       /**
        * Update vertical physics including gravity and jump/fly behavior.
        */
-      const playerVelocity = new THREE.Vector3(0, 0, 0);
-      let playerOnGround = false;
       function updateVerticalPhysics(delta) {
         if (!isFlying) {
           playerVelocity.y += gravity * delta;
@@ -652,6 +566,9 @@
           playerOnGround = false;
         }
       }
+
+      const playerVelocity = new THREE.Vector3(0, 0, 0);
+      let playerOnGround = false;
 
       /**
        * Update horizontal movement (using left controller input).
