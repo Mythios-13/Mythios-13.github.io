@@ -138,7 +138,7 @@
         ctx.fillStyle = "#333333";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = "#ffffff";
-        ctx.font = "24px sans-serif";
+        ctx.font = "18px sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(text, canvas.width / 2, canvas.height / 2);
@@ -150,9 +150,9 @@
         return buttonMesh;
       }
 
-      const saveNewButton = createButton("Save New", 0.4, 0.2);
-      const saveCurrentButton = createButton("Save on Current", 0.4, 0.2);
-      const loadButton = createButton("Load", 0.4, 0.2);
+      const saveNewButton = createButton("Save New", 0.2, 0.1);
+      const saveCurrentButton = createButton("Save on Current", 0.2, 0.1);
+      const loadButton = createButton("Load", 0.2, 0.1);
       loadButton.visible = false;
       const saveListGroup = new THREE.Group();
 
@@ -429,7 +429,7 @@
       // Block selector panel with mini cubes.
       const blockSelectorPanel = new THREE.Group();
       // Position closer to the left controller.
-      blockSelectorPanel.position.set(0, 0.5, -0.3);
+      blockSelectorPanel.position.set(0, 0.1, -0.3);
       const miniCubeSize = 0.1;
       const miniCubeGeometry = new THREE.BoxGeometry(miniCubeSize, miniCubeSize, miniCubeSize);
       const miniCubes = [];
@@ -443,10 +443,9 @@
       });
       // Create a highlight for mini selector cubes (scaled 1.2×)
       miniCubeHighlightMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(miniCubeSize, miniCubeSize, miniCubeSize),
-        new THREE.MeshBasicMaterial({ color: 0x00ffff, opacity: 0.3, transparent: true, depthTest: false })
+        new THREE.BoxGeometry(miniCubeSize *1.2, miniCubeSize*1.2, miniCubeSize*1.2),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.2, transparent: true, depthTest: false })
       );
-      miniCubeHighlightMesh.scale.set(1.2, 1.2, 1.2);
       miniCubeHighlightMesh.visible = false;
       blockSelectorPanel.add(miniCubeHighlightMesh);
 
@@ -497,19 +496,20 @@
       }
       appendLog("Welcome to craft like", true);
       appendLog("-------------------------------", true);
-      appendLog("Right trigger to place blocks or select mini cubes", true);
+      appendLog("Right trigger to place blocks", true);
       appendLog("Right B button to erase blocks", true);
-      appendLog("Aim at blocks to see highlight & placement indicator", true);
+      appendLog("Aim mini blocks to select", true);
       appendLog("-------------------------------", true);
       appendLog("Fly mode : double tap right A button", true);
+      appendLog("-------------------------------", true);
+      appendLog("Left X buton for menu", true);
 
       /* ---------------------------------------------------------------------------
          Block Interaction Functions
       --------------------------------------------------------------------------- */
       function onSelectStart() {
-        if (!gameStarted) {
-          if (checkPlayButtonHit()) return;
-        }
+        if (!gameStarted) return;
+        
         // First check if a mini cube (from the block selector) is hit.
         const raycaster = createRaycaster(rightController);
         const miniIntersects = raycaster.intersectObjects(miniCubes, false);
@@ -530,19 +530,10 @@
         // Otherwise, proceed with block placement.
         placeBlock();
       }
-      function checkPlayButtonHit() {
-        const raycaster = createRaycaster(rightController);
-        const intersects = raycaster.intersectObject(playButton);
-        if (intersects.length > 0) {
-          gameStarted = true;
-          camera.remove(playButton);
-          appendLog("Game started!");
-          console.log("Game started!");
-          return true;
-        }
-        return false;
-      }
+
       function placeBlock() {
+        if(menuOpen) return; // No block placement when menu open
+
         const raycaster = createRaycaster(rightController);
         const objectsToIntersect = [grassInstancedMesh, dirtInstancedMesh, dynamicGroup];
         const intersects = raycaster.intersectObjects(objectsToIntersect, true);
@@ -656,41 +647,6 @@
           blockHighlightMesh.visible = false;
           placementIndicatorMesh.visible = false;
           currentPointedBlockKey = null;
-        } else {
-          miniCubeHighlightMesh.visible = false;
-          const intersects = raycaster.intersectObjects([grassInstancedMesh, dirtInstancedMesh, dynamicGroup], true);
-          if (intersects.length > 0) {
-            const aimed = intersects[0];
-            const aimedBlockPos = new THREE.Vector3(
-              Math.floor(aimed.point.x - 0.5),
-              Math.floor(aimed.point.y - 0.5),
-              Math.floor(aimed.point.z - 0.5)
-            );
-            const newBlockPos = intersects[0].point.clone().add(aimed.face.normal.clone().multiplyScalar(0.5));
-            newBlockPos.x = Math.floor(newBlockPos.x);
-            newBlockPos.y = Math.floor(newBlockPos.y);
-            newBlockPos.z = Math.floor(newBlockPos.z);
-            const currentKey = `${aimedBlockPos.x},${aimedBlockPos.y},${aimedBlockPos.z}`;
-            if (currentPointedBlockKey !== currentKey) {
-              currentPointedBlockKey = currentKey;
-              if (highlightTimer) { clearTimeout(highlightTimer); }
-              blockHighlightMesh.visible = false;
-              placementIndicatorMesh.visible = false;
-              highlightTimer = setTimeout(() => {
-                if (currentPointedBlockKey === currentKey) {
-                  blockHighlightMesh.position.set(aimedBlockPos.x + 0.5, aimedBlockPos.y + 0.5, aimedBlockPos.z + 0.5);
-                  blockHighlightMesh.visible = true;
-                  placementIndicatorMesh.position.set(newBlockPos.x + 0.5, newBlockPos.y + 0.5, newBlockPos.z + 0.5);
-                  placementIndicatorMesh.visible = true;
-                }
-              }, 800);
-            }
-          } else {
-            currentPointedBlockKey = null;
-            if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
-            blockHighlightMesh.visible = false;
-            placementIndicatorMesh.visible = false;
-          }
         }
       }
 
@@ -789,7 +745,7 @@
         }
         const saves = JSON.parse(localStorage.getItem("webxrMinecraftSaves") || "[]");
         saves.forEach((save, index) => {
-          const btn = createButton(save.name, 0.4, 0.2);
+          const btn = createButton(save.name, 0.2, 0.1);
           btn.position.set(0, -index * 0.25, 0);
           btn.userData.saveIndex = index;
           saveListGroup.add(btn);
@@ -887,7 +843,7 @@
       function updateLeftControllerActions() {
         if (!leftController.userData?.gamepad) return;
         // Assume left controller X button is at index 3.
-        const xButtonPressed = leftController.userData.gamepad.buttons[3]?.pressed;
+        const xButtonPressed = leftController.userData.gamepad.buttons[4]?.pressed;
         if (xButtonPressed && !prevLeftXPressed) {
           toggleMenu();
         }
@@ -897,13 +853,6 @@
       /* ---------------------------------------------------------------------------
          Input Handling & Animation Loop
       --------------------------------------------------------------------------- */
-      // Create a play button (attached to the camera) to start the game.
-      const playButtonGeometry = new THREE.PlaneGeometry(0.6, 0.3);
-      const playButtonMaterial = new THREE.MeshBasicMaterial({ color: 0x00aa00 });
-      const playButton = new THREE.Mesh(playButtonGeometry, playButtonMaterial);
-      playButton.position.set(0, 0, -2);
-      camera.add(playButton);
-
       const clock = new THREE.Clock();
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
@@ -1016,6 +965,7 @@
       const splash = document.getElementById("splash");
       const enterVRButton = document.getElementById("enterVRButton");
       enterVRButton.addEventListener("click", async () => {
+        gameStarted = true;
         splash.style.display = "none";
         if (navigator.xr) {
           try {
