@@ -1,0 +1,19 @@
+Hey pal, Today i want to create a minecraft like game with you.
+It will use html and three.js as codebase.
+It's a minecraft like game, where you can add cubes to the scene.
+We use the keys AWSD for move the character, space to jump and mouse to control camera.
+when the player uses the left mouse trigger it adds a cube.
+or the floor, make it a cube based floor, with a 64x64 cubes area, with 6 levels of deep. the upper level cubes are greenish, the other brown. add some pixel noise like texture to the cubes. 
+I want it to add the cubes in the same grid as the other cubes,
+they need to be aligned like the floor and ground.
+I want the whole world editable. So the floor and underground act like the other added cubes, so I can also destroy them.
+The cubes are stored in a efficient way, in a 3 dimentional chunk. The chunk if 64x64x128. The floor is layer 32,
+ underneeth is the underground, keep the actual block types.
+For initialisation, we should start with floor 32 the is filled with grass (like actual) and underneath till floor 16 dirt blocks.
+For now, no blocks in level 1 to 15.
+Add a collision detector, so if the player falls beneath floor 1, it's position is randomized in the chunk at level 33.
+Also, when placing the cubes, we can place them on the other current cubes.
+The floor and ground also are the cubes.
+The the player uses the right mouse button, the cube that is in the ray cast is destroyed.
+please use this file as inspiration : webXr/index.html , it's a webxr version of the game i would like to recreate in web alone.
+create the new game in a file named index.html inside the folder MinecraftLike.

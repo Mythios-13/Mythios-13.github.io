@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Sokoban</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column; /* Stack elements vertically */
+            align-items: center; /* Center horizontally */
+            justify-content: center; /* Center vertically */
+            min-height: 100vh;
+            background-color: #f0f0f0;
+            margin: 0;
+        }
+
+        #game-container {
+            border: 2px solid #333;
+            background-color: #fff;
+            padding: 10px;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #game-board {
+            display: grid; /* Use CSS Grid for the layout */
+            border: 1px solid #ccc;
+            margin-bottom: 10px; /* Space below the board */
+        }
+
+        .cell {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px; /* Make emojis/chars bigger */
+            border: 1px dotted #eee; /* Slight border for cells */
+            box-sizing: border-box; /* Include border in size */
+        }
+
+        .wall {
+            background-color: #555;
+            border: 1px solid #333;
+        }
+
+        .floor {
+            background-color: #fff;
+        }
+
+        .goal {
+            background-color: #ffdddd; /* Light red */
+            /* Use a pseudo-element for the dot if needed */
+        }
+         .goal::before {
+            content: '·'; /* A central dot character */
+            color: #f88;
+            font-size: 40px;
+            line-height: 30px; /* Align dot vertically */
+         }
+
+
+        .player {
+            /* background-color: blue; */
+            /* color: white; */
+             /* Use emoji for player */
+        }
+        .player::before {
+             content: '🧑'; /* Player emoji */
+        }
+
+
+        .box {
+            /* background-color: brown; */
+             /* Use emoji for box */
+        }
+         .box::before {
+             content: '📦'; /* Box emoji */
+             font-size: 24px;
+         }
+
+        .box-on-goal {
+            background-color: #90ee90; /* Light green */
+        }
+         .box-on-goal::before {
+             content: '✅'; /* Checkmark emoji for box on goal */
+             font-size: 24px;
+         }
+
+         /* Style for player on a goal square */
+         .player-on-goal {
+             background-color: #ffdddd; /* Same as goal */
+         }
+          .player-on-goal::before {
+              content: '🧑'; /* Player emoji */
+          }
+
+
+        #status {
+            margin-top: 10px;
+            font-size: 1.1em;
+            color: #333;
+        }
+
+        #controls {
+            margin-top: 15px;
+            text-align: center;
+            color: #555;
+        }
+         #win-message {
+             margin-top: 15px;
+             font-size: 1.5em;
+             color: green;
+             font-weight: bold;
+             text-align: center;
+             display: none; /* Hidden initially */
+         }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <h1>Simple Sokoban</h1>
+        <div id="status">Level: 1 | Moves: 0</div>
+        <div id="game-board">
+            <!-- Game board will be generated here by JavaScript -->
+        </div>
+         <div id="win-message">You Won! Press N for Next Level</div>
+        <div id="controls">
+            Use Arrow Keys to move. Push boxes (📦) onto goals (·).
+            <br>Press R to restart level.
+        </div>
+    </div>
+
+    <script>
+        // --- Game Configuration ---
+        const levels = [
+            // Level 1
+            [
+                "#####",
+                "#@$.#",
+                "#####"
+            ],
+             // Level 2 (Slightly more complex)
+             [
+                 "  #####",
+                 "###   #",
+                 "#.@ $ #",
+                 "###$. #",
+                 "#.# $ #",
+                 "# # . #",
+                 "# $  ##",
+                 "#  #@##", // Player start moved
+                 "#######"
+             ],
+             // Level 3
+             [
+                 "#########",
+                 "#.  $ #.#",
+                 "#   #   #",
+                 "# $.##  #",
+                 "## $  # #",
+                 "#@ .# $ #",
+                 "#       #",
+                 "#########"
+             ],
+             // Level 4 (Example of tighter space)
+             [
+                 "######",
+                 "#@ $.#",
+                 "#  $ #",
+                 "## . #",
+                 "######"
+             ]
+        ];
+
+        const TILE = {
+            WALL: '#',
+            FLOOR: ' ',
+            GOAL: '.',
+            PLAYER: '@',
+            BOX: '$',
+            BOX_ON_GOAL: '*', // Represents a box on a goal in our internal state
+            PLAYER_ON_GOAL: '+' // Represents player on a goal in our internal state
+        };
+
+        // --- Game State ---
+        let currentLevelIndex = 0;
+        let currentMap = []; // Will hold the 2D array representation of the current level
+        let playerPos = { x: 0, y: 0 };
+        let moveCount = 0;
+        let goalPositions = []; // Store {x, y} of original goal locations
+
+        // --- DOM Elements ---
+        const gameBoardElement = document.getElementById('game-board');
+        const statusElement = document.getElementById('status');
+        const winMessageElement = document.getElementById('win-message');
+
+        // --- Game Logic Functions ---
+
+        function isWall(x, y) {
+            return currentMap[y] && currentMap[y][x] === TILE.WALL;
+        }
+
+        function isBox(x, y) {
+            const tile = currentMap[y] && currentMap[y][x];
+            return tile === TILE.BOX || tile === TILE.BOX_ON_GOAL;
+        }
+
+        function isGoal(x, y) {
+            // Check original goal positions, not the current map state
+            return goalPositions.some(pos => pos.x === x && pos.y === y);
+        }
+
+        function getTile(x, y) {
+            if (y < 0 || y >= currentMap.length || x < 0 || x >= currentMap[y].length) {
+                return TILE.WALL; // Treat outside bounds as walls
+            }
+            return currentMap[y][x];
+        }
+
+        function setTile(x, y, tile) {
+            if (y >= 0 && y < currentMap.length && x >= 0 && x < currentMap[y].length) {
+                // Need to convert the string row to an array to modify it
+                const rowArray = currentMap[y].split('');
+                rowArray[x] = tile;
+                currentMap[y] = rowArray.join('');
+            }
+        }
+
+        function loadLevel(levelIndex) {
+            if (levelIndex >= levels.length) {
+                winMessageElement.textContent = "You beat all levels!";
+                winMessageElement.style.display = 'block';
+                return false; // No more levels
+            }
+
+            currentLevelIndex = levelIndex;
+            // Deep copy the level layout to currentMap
+            currentMap = levels[currentLevelIndex].map(row => row);
+            moveCount = 0;
+            goalPositions = []; // Reset goal positions for the new level
+            winMessageElement.style.display = 'none'; // Hide win message
+
+            // Find player start position and goal locations
+            for (let y = 0; y < currentMap.length; y++) {
+                for (let x = 0; x < currentMap[y].length; x++) {
+                    const tile = currentMap[y][x];
+                    if (tile === TILE.PLAYER || tile === TILE.PLAYER_ON_GOAL) {
+                        playerPos = { x, y };
+                    }
+                    if (tile === TILE.GOAL || tile === TILE.BOX_ON_GOAL || tile === TILE.PLAYER_ON_GOAL) {
+                         goalPositions.push({ x, y });
+                    }
+                     // Initialize internal state correctly for box/player starting on goals
+                     if (tile === TILE.BOX && isGoal(x,y)) {
+                         setTile(x, y, TILE.BOX_ON_GOAL);
+                     } else if (tile === TILE.PLAYER && isGoal(x, y)) {
+                          setTile(x, y, TILE.PLAYER_ON_GOAL);
+                     }
+                }
+            }
+
+            drawMap();
+            updateStatus();
+            return true; // Level loaded successfully
+        }
+
+        function drawMap() {
+            gameBoardElement.innerHTML = ''; // Clear previous board
+            const mapWidth = currentMap[0].length;
+            gameBoardElement.style.gridTemplateColumns = `repeat(${mapWidth}, 30px)`; // Set grid columns
+
+            for (let y = 0; y < currentMap.length; y++) {
+                for (let x = 0; x < currentMap[y].length; x++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    const tile = currentMap[y][x];
+
+                    switch (tile) {
+                        case TILE.WALL:
+                            cell.classList.add('wall');
+                            break;
+                        case TILE.FLOOR:
+                            cell.classList.add('floor');
+                            break;
+                        case TILE.GOAL:
+                            cell.classList.add('goal');
+                            break;
+                        case TILE.PLAYER:
+                            cell.classList.add('floor', 'player'); // Player on floor
+                            break;
+                        case TILE.BOX:
+                            cell.classList.add('floor', 'box'); // Box on floor
+                            break;
+                        case TILE.BOX_ON_GOAL:
+                            cell.classList.add('box-on-goal', 'box'); // Box on a goal
+                            break;
+                        case TILE.PLAYER_ON_GOAL:
+                            cell.classList.add('goal', 'player-on-goal', 'player'); // Player on a goal
+                            break;
+                        default: // Should not happen, but default to floor
+                             cell.classList.add('floor');
+                    }
+                    gameBoardElement.appendChild(cell);
+                }
+            }
+        }
+
+        function updateStatus() {
+            statusElement.textContent = `Level: ${currentLevelIndex + 1} | Moves: ${moveCount}`;
+        }
+
+        function movePlayer(dx, dy) {
+            const nextX = playerPos.x + dx;
+            const nextY = playerPos.y + dy;
+            const nextNextX = nextX + dx;
+            const nextNextY = nextY + dy;
+
+            // --- Check Movement ---
+
+            // 1. Check wall collision
+            if (isWall(nextX, nextY)) {
+                return; // Cannot move into a wall
+            }
+
+            // 2. Check box collision
+            if (isBox(nextX, nextY)) {
+                // Check if the space BEHIND the box is clear (not wall, not another box)
+                if (isWall(nextNextX, nextNextY) || isBox(nextNextX, nextNextY)) {
+                    return; // Cannot push the box
+                }
+
+                // --- Push the box ---
+                const boxCurrentTile = getTile(nextX, nextY);
+                const boxTargetTile = getTile(nextNextX, nextNextY);
+
+                // Update the tile where the box is moving TO
+                if (isGoal(nextNextX, nextNextY)) {
+                     setTile(nextNextX, nextNextY, TILE.BOX_ON_GOAL);
+                } else {
+                     setTile(nextNextX, nextNextY, TILE.BOX);
+                }
+
+                 // Update the tile the box is moving FROM (which the player will occupy)
+                 // If the box was on a goal, the player is now on that goal
+                 if (boxCurrentTile === TILE.BOX_ON_GOAL) {
+                     setTile(nextX, nextY, TILE.PLAYER_ON_GOAL);
+                 } else { // Box was on floor
+                      setTile(nextX, nextY, TILE.PLAYER);
+                 }
+
+            } else {
+                 // --- Simple move (no box push) ---
+                 // Update the tile the player is moving TO
+                 if (isGoal(nextX, nextY)) {
+                     setTile(nextX, nextY, TILE.PLAYER_ON_GOAL);
+                 } else {
+                      setTile(nextX, nextY, TILE.PLAYER);
+                 }
+            }
+
+            // --- Update Player's Previous Position ---
+            const playerCurrentTile = getTile(playerPos.x, playerPos.y);
+             // Restore the goal if player was on one, otherwise make it floor
+            if (playerCurrentTile === TILE.PLAYER_ON_GOAL) {
+                 setTile(playerPos.x, playerPos.y, TILE.GOAL);
+            } else {
+                 setTile(playerPos.x, playerPos.y, TILE.FLOOR);
+            }
+
+
+            // Update player's actual position
+            playerPos = { x: nextX, y: nextY };
+            moveCount++;
+
+            // Redraw and check win
+            drawMap();
+            updateStatus();
+            checkWinCondition();
+        }
+
+        function checkWinCondition() {
+            // Win if there are no regular boxes left (all must be BOX_ON_GOAL)
+             for (let y = 0; y < currentMap.length; y++) {
+                 for (let x = 0; x < currentMap[y].length; x++) {
+                     if (currentMap[y][x] === TILE.BOX) {
+                         return false; // Found a box not on a goal
+                     }
+                 }
+             }
+
+             // If we reach here, all boxes are on goals (or there were no boxes!)
+             // We also need to ensure there are goals to be filled.
+             if (goalPositions.length > 0) {
+                 winMessageElement.textContent = `Level ${currentLevelIndex + 1} Cleared! Press N for Next.`;
+                 winMessageElement.style.display = 'block';
+                 return true;
+             }
+             return false; // No goals on the map means no win condition? Or instant win? Decide behavior. Here, we assume goals must exist.
+        }
+
+        // --- Event Listener ---
+        document.addEventListener('keydown', (event) => {
+            // Prevent arrow keys from scrolling the page
+             if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+                event.preventDefault();
+            }
+
+            // Handle win state separately - only N or R work
+             if (winMessageElement.style.display === 'block') {
+                 if (event.key.toUpperCase() === 'N') {
+                     loadLevel(currentLevelIndex + 1);
+                 } else if (event.key.toUpperCase() === 'R') {
+                      loadLevel(currentLevelIndex); // Restart current level
+                 }
+                 return; // Ignore other keys when win message is shown
+             }
+
+
+            switch (event.key) {
+                case "ArrowUp":
+                    movePlayer(0, -1);
+                    break;
+                case "ArrowDown":
+                    movePlayer(0, 1);
+                    break;
+                case "ArrowLeft":
+                    movePlayer(-1, 0);
+                    break;
+                case "ArrowRight":
+                    movePlayer(1, 0);
+                    break;
+                 case "R": // Restart Level
+                 case "r":
+                     loadLevel(currentLevelIndex);
+                     break;
+                 case "N": // Go to Next Level (useful if already won but didn't press N)
+                 case "n":
+                      if (checkWinCondition()) { // Allow N only if level is actually won
+                           loadLevel(currentLevelIndex + 1);
+                      }
+                     break;
+            }
+        });
+
+        // --- Initial Load ---
+        loadLevel(currentLevelIndex); // Load the first level when the script runs
+
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Sokoban</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column; /* Stack elements vertically */
+            align-items: center; /* Center horizontally */
+            justify-content: center; /* Center vertically */
+            min-height: 100vh;
+            background-color: #e0e0e0; /* Lighter gray background */
+            margin: 0;
+        }
+
+        #game-container {
+            border: 2px solid #555;
+            background-color: #f8f8f8; /* Slightly off-white */
+            padding: 15px;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border-radius: 8px; /* Rounded corners */
+        }
+
+        h1 {
+             margin-top: 0;
+             color: #333;
+        }
+
+        #game-canvas {
+            border: 1px solid #aaa;
+            margin-bottom: 15px; /* Space below the canvas */
+            background-color: #fff; /* White background for the canvas area itself */
+             /* Dimensions will be set by JS */
+        }
+
+        #status {
+            margin-bottom: 10px; /* Space below status */
+            font-size: 1.1em;
+            color: #444;
+            font-weight: bold;
+        }
+
+        #controls {
+            margin-top: 10px;
+            text-align: center;
+            color: #555;
+            font-size: 0.9em;
+        }
+         #win-message {
+             margin-top: 15px;
+             font-size: 1.5em;
+             color: #28a745; /* Bootstrap success green */
+             font-weight: bold;
+             text-align: center;
+             display: none; /* Hidden initially */
+             padding: 10px;
+             background-color: #d4edda; /* Light green background */
+             border: 1px solid #c3e6cb; /* Green border */
+             border-radius: 5px;
+         }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <h1>Canvas Sokoban</h1>
+        <div id="status">Level: 1 | Moves: 0</div>
+        <canvas id="game-canvas"></canvas> <!-- Canvas replaces the game-board div -->
+         <div id="win-message">You Won! Press N for Next Level</div>
+        <div id="controls">
+            Use Arrow Keys to move. Push boxes (📦) onto goals (🎯).
+            <br>Press R to restart level.
+        </div>
+    </div>
+
+    <script>
+        // --- Game Configuration ---
+        const levels = [
+            // Level 1
+            [
+                "#####",
+                "#@$.#",
+                "#####"
+            ],
+             // Level 2
+             [
+             "  #####",
+                 "###   #",
+                 "#.@ $ #",
+                 "###$. #",
+                 "#.# $ #",
+                 "# # . #",
+                 "# $  ##",
+                 "#  #@##", // Player start moved
+                 "#######"
+             ],
+             // Level 3
+             [
+             "#########",
+                 "#.  $ #.#",
+                 "#   #   #",
+                 "# $.##  #",
+                 "## $  # #",
+                 "#@ .# $ #",
+                 "#       #",
+                 "#########"
+             ],
+             // Level 4
+             [
+                 "######",
+                 "#@ $.#",
+                 "#  $ #",
+                 "## . #",
+                 "######"
+             ]
+        ];
+
+        const TILE = {
+            WALL: '#',
+            FLOOR: ' ',
+            GOAL: '.',
+            PLAYER: '@',
+            BOX: '$',
+            BOX_ON_GOAL: '*', // Represents a box on a goal in our internal state
+            PLAYER_ON_GOAL: '+' // Represents player on a goal in our internal state
+        };
+
+        // --- Graphics Configuration ---
+        const tileSize = 35; // Pixel size of each tile
+        const colors = {
+            wall: '#5a5a5a',       // Dark grey for walls
+            floor: '#eeeeee',      // Light grey floor
+            goal: '#ffcc80',       // Light orange goal area
+            goalMarker: '#ffa726', // Darker orange for the goal target itself
+            player: '#42a5f5',     // Blue player
+            box: '#8d6e63',        // Brown box
+            boxOnGoal: '#7cb342'   // Greenish box on goal
+        };
+        const emoji = { // Using emojis for more visual flair
+            player: '🧑',
+            box: '📦',
+            goal: '🎯', // Target emoji for goal marker
+            boxOnGoal: '✅' // Checkmark when box is on goal
+        };
+        const useEmoji = true; // Set to false to use colored squares instead of emoji
+
+
+        // --- Game State ---
+        let currentLevelIndex = 0;
+        let currentMap = []; // Will hold the 2D array representation of the current level
+        let playerPos = { x: 0, y: 0 };
+        let moveCount = 0;
+        let goalPositions = []; // Store {x, y} of original goal locations
+
+        // --- DOM & Canvas Elements ---
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const statusElement = document.getElementById('status');
+        const winMessageElement = document.getElementById('win-message');
+
+        // --- Drawing Functions ---
+
+        function drawFloor(x, y) {
+            ctx.fillStyle = colors.floor;
+            ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+        }
+
+        function drawWall(x, y) {
+            ctx.fillStyle = colors.wall;
+            ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+             // Optional: Add a simple 3D effect or border
+             ctx.strokeStyle = '#444';
+             ctx.lineWidth = 1;
+             ctx.strokeRect(x * tileSize + 1, y * tileSize + 1, tileSize - 2, tileSize - 2);
+        }
+
+        function drawGoal(x, y) {
+            // Draw floor background first
+            ctx.fillStyle = colors.goal; // Use a distinct background for the goal square
+            ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+
+            // Draw goal marker (emoji or simple shape)
+            if (useEmoji) {
+                ctx.font = `${tileSize * 0.6}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(emoji.goal, x * tileSize + tileSize / 2, y * tileSize + tileSize / 2);
+            } else {
+                ctx.fillStyle = colors.goalMarker;
+                const markerSize = tileSize * 0.4;
+                ctx.fillRect(
+                    x * tileSize + (tileSize - markerSize) / 2,
+                    y * tileSize + (tileSize - markerSize) / 2,
+                    markerSize,
+                    markerSize
+                );
+            }
+        }
+
+         function drawPlayer(x, y, onGoal) {
+             // Draw the underlying tile (floor or goal) first
+             if (onGoal) {
+                 drawGoal(x, y);
+             } else {
+                 drawFloor(x, y);
+             }
+
+             // Draw the player on top
+            if (useEmoji) {
+                 ctx.font = `${tileSize * 0.7}px sans-serif`;
+                 ctx.textAlign = 'center';
+                 ctx.textBaseline = 'middle';
+                 // Slight vertical offset for better centering of person emoji
+                 ctx.fillText(emoji.player, x * tileSize + tileSize / 2, y * tileSize + tileSize / 2 + tileSize * 0.05);
+             } else {
+                 ctx.fillStyle = colors.player;
+                 const playerSize = tileSize * 0.7;
+                 ctx.beginPath();
+                 ctx.arc(
+                    x * tileSize + tileSize / 2,
+                    y * tileSize + tileSize / 2,
+                    playerSize / 2, // Radius
+                    0, Math.PI * 2
+                );
+                 ctx.fill();
+             }
+         }
+
+        function drawBox(x, y, onGoal) {
+            // Draw the underlying tile (floor or goal) first
+            if (onGoal) {
+                drawGoal(x, y); // Goal background
+            } else {
+                drawFloor(x, y); // Floor background
+            }
+
+             // Draw the box on top
+            if (useEmoji) {
+                ctx.font = `${tileSize * 0.7}px sans-serif`;
+                 ctx.textAlign = 'center';
+                 ctx.textBaseline = 'middle';
+                 // Use checkmark if on goal, otherwise box emoji
+                 const char = onGoal ? emoji.boxOnGoal : emoji.box;
+                 ctx.fillText(char, x * tileSize + tileSize / 2, y * tileSize + tileSize / 2);
+            } else {
+                ctx.fillStyle = onGoal ? colors.boxOnGoal : colors.box;
+                const boxSize = tileSize * 0.8;
+                ctx.fillRect(
+                    x * tileSize + (tileSize - boxSize) / 2,
+                    y * tileSize + (tileSize - boxSize) / 2,
+                    boxSize, boxSize
+                );
+                 // Optional: Add border to box
+                 ctx.strokeStyle = onGoal ? '#558b2f' : '#5d4037'; // Darker shade for border
+                 ctx.lineWidth = 1;
+                 ctx.strokeRect(
+                     x * tileSize + (tileSize - boxSize) / 2,
+                     y * tileSize + (tileSize - boxSize) / 2,
+                     boxSize, boxSize
+                 );
+            }
+        }
+
+
+        // --- Main Rendering Function ---
+         function renderCanvas() {
+             // Clear the entire canvas
+             ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+             // Calculate map dimensions (needed if map changes size)
+             if (!currentMap || currentMap.length === 0) return;
+             const mapHeight = currentMap.length;
+             const mapWidth = currentMap[0].length; // Assume rectangular map
+
+             // Set canvas size based on map and tileSize (if not already set or changed)
+             const expectedWidth = mapWidth * tileSize;
+             const expectedHeight = mapHeight * tileSize;
+             if (canvas.width !== expectedWidth || canvas.height !== expectedHeight) {
+                 canvas.width = expectedWidth;
+                 canvas.height = expectedHeight;
+             }
+
+
+            // Draw each tile
+            for (let y = 0; y < mapHeight; y++) {
+                for (let x = 0; x < mapWidth; x++) {
+                    const tile = getTile(x, y); // Use helper to handle bounds safely
+
+                    switch (tile) {
+                        case TILE.WALL:
+                            drawWall(x, y);
+                            break;
+                        case TILE.FLOOR:
+                            drawFloor(x, y);
+                            break;
+                        case TILE.GOAL:
+                             drawGoal(x, y);
+                            break;
+                        case TILE.PLAYER:
+                             drawPlayer(x, y, false); // Player on floor
+                            break;
+                        case TILE.BOX:
+                             drawBox(x, y, false); // Box on floor
+                            break;
+                        case TILE.BOX_ON_GOAL:
+                             drawBox(x, y, true); // Box on goal
+                            break;
+                        case TILE.PLAYER_ON_GOAL:
+                             drawPlayer(x, y, true); // Player on goal
+                            break;
+                        default: // Should not happen, but draw floor
+                             drawFloor(x, y);
+                    }
+                }
+            }
+        }
+
+
+        // --- Game Logic Functions (Mostly Unchanged) ---
+
+        function isWall(x, y) {
+            return getTile(x,y) === TILE.WALL;
+        }
+
+        function isBox(x, y) {
+            const tile = getTile(x,y);
+            return tile === TILE.BOX || tile === TILE.BOX_ON_GOAL;
+        }
+
+        function isGoal(x, y) {
+            // Check original goal positions, not the current map state
+            return goalPositions.some(pos => pos.x === x && pos.y === y);
+        }
+
+        function getTile(x, y) {
+            if (y < 0 || y >= currentMap.length || x < 0 || !currentMap[y] || x >= currentMap[y].length) {
+                 // Check if currentMap[y] exists before accessing length
+                return TILE.WALL; // Treat outside bounds as walls
+            }
+            return currentMap[y][x];
+        }
+
+
+        function setTile(x, y, tile) {
+             // Check boundaries before attempting to set
+            if (y >= 0 && y < currentMap.length && x >= 0 && currentMap[y] && x < currentMap[y].length) {
+                // Need to convert the string row to an array to modify it
+                 // Only do this if the row exists and is a string (it should be)
+                 if (typeof currentMap[y] === 'string') {
+                     const rowArray = currentMap[y].split('');
+                     if (x < rowArray.length) { // Double check index within array
+                          rowArray[x] = tile;
+                          currentMap[y] = rowArray.join('');
+                     }
+                 }
+             } else {
+                 console.warn(`Attempted to set tile outside bounds at (${x}, ${y})`);
+             }
+        }
+
+
+        function loadLevel(levelIndex) {
+            if (levelIndex >= levels.length) {
+                winMessageElement.textContent = "You beat all levels! 🎉";
+                winMessageElement.style.display = 'block';
+                 canvas.style.opacity = 0.5; // Dim canvas when all levels are done
+                return false; // No more levels
+            }
+
+            currentLevelIndex = levelIndex;
+            // Deep copy the level layout to currentMap
+            currentMap = levels[currentLevelIndex].map(row => row);
+            moveCount = 0;
+            goalPositions = []; // Reset goal positions for the new level
+            winMessageElement.style.display = 'none'; // Hide win message
+            canvas.style.opacity = 1; // Ensure canvas is fully visible
+
+
+            // Find player start position, goal locations, and initialize state
+            for (let y = 0; y < currentMap.length; y++) {
+                for (let x = 0; x < currentMap[y].length; x++) {
+                    const tile = currentMap[y][x];
+                    let originalTileIsGoal = false;
+
+                    // Detect original goals first
+                     if (tile === TILE.GOAL || tile === TILE.BOX_ON_GOAL || tile === TILE.PLAYER_ON_GOAL) {
+                         goalPositions.push({ x, y });
+                         originalTileIsGoal = true;
+                     }
+
+                    // Set player position
+                    if (tile === TILE.PLAYER || tile === TILE.PLAYER_ON_GOAL) {
+                        playerPos = { x, y };
+                         // Correct internal state if player starts on a goal
+                         if (originalTileIsGoal) setTile(x, y, TILE.PLAYER_ON_GOAL);
+                         else setTile(x, y, TILE.PLAYER); // Ensure it's marked as player if not on goal
+                    }
+                     // Correct internal state if box starts on a goal
+                     else if (tile === TILE.BOX || tile === TILE.BOX_ON_GOAL) {
+                          if (originalTileIsGoal) setTile(x, y, TILE.BOX_ON_GOAL);
+                          else setTile(x, y, TILE.BOX); // Ensure it's marked as box if not on goal
+                     }
+                     // Ensure goals without items are marked correctly
+                     else if (tile === TILE.GOAL) {
+                         setTile(x, y, TILE.GOAL);
+                     }
+                      // Ensure floor tiles are marked correctly (handling spaces)
+                      else if (tile === TILE.FLOOR) {
+                           setTile(x, y, TILE.FLOOR);
+                      }
+                }
+            }
+
+             // Initial draw using Canvas
+             renderCanvas(); // This will also set canvas dimensions
+            updateStatus();
+            return true; // Level loaded successfully
+        }
+
+        function updateStatus() {
+            statusElement.textContent = `Level: ${currentLevelIndex + 1} | Moves: ${moveCount}`;
+        }
+
+        function movePlayer(dx, dy) {
+            const currentX = playerPos.x;
+            const currentY = playerPos.y;
+            const nextX = currentX + dx;
+            const nextY = currentY + dy;
+            const nextNextX = nextX + dx;
+            const nextNextY = nextY + dy;
+
+            // --- Check Movement ---
+            const nextTile = getTile(nextX, nextY);
+
+            // 1. Check wall collision
+            if (nextTile === TILE.WALL) {
+                return; // Cannot move into a wall
+            }
+
+            // 2. Check box collision
+            if (nextTile === TILE.BOX || nextTile === TILE.BOX_ON_GOAL) {
+                const afterBoxTile = getTile(nextNextX, nextNextY);
+
+                // Check if the space BEHIND the box is clear (not wall, not another box)
+                if (afterBoxTile === TILE.WALL || afterBoxTile === TILE.BOX || afterBoxTile === TILE.BOX_ON_GOAL) {
+                    return; // Cannot push the box
+                }
+
+                // --- Push the box ---
+                 // Update the tile where the box is moving TO
+                 setTile(nextNextX, nextNextY, isGoal(nextNextX, nextNextY) ? TILE.BOX_ON_GOAL : TILE.BOX);
+
+                 // Update the tile the box is moving FROM (which the player will occupy)
+                 // Player moves onto the spot the box was on. Mark as player or player_on_goal.
+                 setTile(nextX, nextY, isGoal(nextX, nextY) ? TILE.PLAYER_ON_GOAL : TILE.PLAYER);
+
+            } else {
+                 // --- Simple move (no box push) ---
+                 // Update the tile the player is moving TO
+                 setTile(nextX, nextY, isGoal(nextX, nextY) ? TILE.PLAYER_ON_GOAL : TILE.PLAYER);
+            }
+
+            // --- Update Player's Previous Position ---
+            // Restore the tile the player moved FROM (floor or goal)
+            setTile(currentX, currentY, isGoal(currentX, currentY) ? TILE.GOAL : TILE.FLOOR);
+
+
+            // Update player's actual position state
+            playerPos = { x: nextX, y: nextY };
+            moveCount++;
+
+            // Re-render the canvas and check win condition
+            renderCanvas();
+            updateStatus();
+            checkWinCondition(); // Check win only after rendering is complete
+        }
+
+
+        function checkWinCondition() {
+            // Win if all original goal positions are covered by boxes_on_goal
+            if (goalPositions.length === 0) return false; // No goals means no win condition?
+
+            for (const goal of goalPositions) {
+                if (getTile(goal.x, goal.y) !== TILE.BOX_ON_GOAL) {
+                    return false; // Found a goal that doesn't have a box on it
+                }
+            }
+
+             // If we looped through all goals and they all have boxes on them
+             winMessageElement.textContent = `Level ${currentLevelIndex + 1} Cleared! Press N for Next.`;
+             winMessageElement.style.display = 'block';
+             return true;
+        }
+
+        // --- Event Listener ---
+        document.addEventListener('keydown', (event) => {
+            // Prevent arrow keys from scrolling the page
+             if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+                event.preventDefault();
+            }
+
+            // Handle win state separately - only N or R work
+             if (winMessageElement.style.display === 'block') {
+                 if (event.key.toUpperCase() === 'N') {
+                     loadLevel(currentLevelIndex + 1);
+                 } else if (event.key.toUpperCase() === 'R') {
+                      loadLevel(currentLevelIndex); // Restart current level
+                 }
+                 return; // Ignore other keys when win message is shown
+             }
+
+             // Ignore input if game hasn't loaded or finished
+             if (currentMap.length === 0) return;
+
+
+            switch (event.key) {
+                case "ArrowUp":
+                    movePlayer(0, -1);
+                    break;
+                case "ArrowDown":
+                    movePlayer(0, 1);
+                    break;
+                case "ArrowLeft":
+                    movePlayer(-1, 0);
+                    break;
+                case "ArrowRight":
+                    movePlayer(1, 0);
+                    break;
+                 case "R": // Restart Level
+                 case "r":
+                     loadLevel(currentLevelIndex);
+                     break;
+                 case "N": // Go to Next Level (useful if already won but didn't press N)
+                 case "n":
+                     // Re-check win condition before allowing skip, in case of weird state
+                      if (checkWinCondition()) {
+                           loadLevel(currentLevelIndex + 1);
+                      }
+                     break;
+            }
+        });
+
+        // --- Initial Load ---
+        loadLevel(currentLevelIndex); // Load the first level when the script runs
+
+    </script>
+
+</body>
+</html>

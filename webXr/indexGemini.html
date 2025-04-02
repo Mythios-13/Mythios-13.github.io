@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>WebXR Minecraft-like Game v4 (Instancing, Reuse, Highlight, Collision)</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      #splash {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+      }
+      #splash button {
+        font-size: 24px;
+        padding: 1em 2em;
+        cursor: pointer;
+      }
+      #errorLog {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(255, 0, 0, 0.7);
+        color: #fff;
+        padding: 10px;
+        font-family: monospace;
+        z-index: 100;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash">
+      <button id="enterVRButton">Enter VR v1.1</button>
+    </div>
+    <div id="errorLog"></div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.173.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from 'three';
+      import { VRButton } from 'three/addons/webxr/VRButton.js';
+      import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
+      /* ---------------------------------------------------------------------------
+         Global Variables & Game Settings
+      --------------------------------------------------------------------------- */
+      const errorLogEl = document.getElementById("errorLog");
+      const devLogMode = true; // Enable logging for debugging changes
+      const CHUNK_WIDTH = 64, CHUNK_HEIGHT = 128, CHUNK_DEPTH = 64;
+      const gravity = -10;
+      const jumpSpeed = 7;
+      const moveSpeed = 0.15; // Slightly reduced base speed
+      const flySpeed = 0.3;
+      const turnSpeed = 0.05;
+      const playerRadius = 0.3;
+      const playerHeight = 1.8;
+      const doubleTapThreshold = 300; // milliseconds
+
+      // --- Controller Mappings (Example for Oculus Touch/Meta Quest) ---
+      // Axes: [0: Touchpad X (if available), 1: Touchpad Y (if available), 2: Thumbstick X, 3: Thumbstick Y]
+      const AXIS_SIDEWAYS = 2;
+      const AXIS_FORWARD = 3;
+      // Buttons: [0: Trigger, 1: Grip, 2: Touchpad Press (if available), 3: Thumbstick Press, 4: A/X, 5: B/Y]
+      const BUTTON_TRIGGER = 0;
+      const BUTTON_GRIP = 1;
+      const BUTTON_THUMBSTICK = 3;
+      const BUTTON_PRIMARY = 4;   // A (Right) / X (Left)
+      const BUTTON_SECONDARY = 5; // B (Right) / Y (Left)
+      // --------------------------------------------------------------------
+
+      let isFlying = false;
+      let lastAPressTime = 0;
+      let prevAPressed = false;
+      let prevBPressed = false;
+      let gameStarted = false;
+
+      // World data: single chunk storing { type, instanceId } for all block types.
+      const chunk = [];
+
+      /* --- InstancedMesh Setup --- */
+      // Initial world size estimates + extra capacity
+      const initialGrassCount = CHUNK_WIDTH * CHUNK_DEPTH;
+      const initialDirtCount = CHUNK_WIDTH * CHUNK_DEPTH * 16;
+      const extraCapacity = 5000; // Increased capacity
+      const grassCapacity = initialGrassCount + extraCapacity;
+      const dirtCapacity = initialDirtCount + extraCapacity;
+      const dynamicCapacity = extraCapacity; // Capacity for dynamic blocks
+
+      // Track next available sequential ID if no free indices exist
+      let nextGrassInstance = 0;
+      let nextDirtInstance = 0;
+      let nextDynamicInstance = 0;
+
+      // Store freed instance IDs for reuse
+      const freeGrassIndices = [];
+      const freeDirtIndices = [];
+      const freeDynamicIndices = [];
+
+      let grassInstancedMesh, dirtInstancedMesh, dynamicInstancedMesh;
+
+      /* --- Highlight & Placement Indicator --- */
+      const blockHighlightMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshBasicMaterial({ color: 0xffff00, opacity: 0.3, transparent: true, depthTest: false })
+      );
+      blockHighlightMesh.scale.set(1.05, 1.05, 1.05); // Slightly smaller highlight
+      blockHighlightMesh.visible = false;
+      blockHighlightMesh.renderOrder = 1; // Render after blocks
+
+      const placementIndicatorMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true, depthTest: false })
+      );
+      placementIndicatorMesh.visible = false;
+      placementIndicatorMesh.renderOrder = 1;
+
+      /* --- Menu UI Variables --- */
+      let menuOpen = false;
+      let prevLeftXPressed = false;
+      let currentSelectedSaveIndex = null;
+      let currentSaveName = null;
+      let prevRightTriggerPressed = false;
+
+      const menuGroup = new THREE.Group();
+      menuGroup.visible = false;
+
+      function createButton(text, width, height) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 128;
+        canvas.height = 64;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#333333";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "18px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+        const texture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+        const geometry = new THREE.PlaneGeometry(width, height);
+        const buttonMesh = new THREE.Mesh(geometry, material);
+        buttonMesh.userData.buttonText = text;
+        return buttonMesh;
+      }
+
+      const saveNewButton = createButton("Save New", 0.2, 0.1);
+      const saveCurrentButton = createButton("Save on Current", 0.2, 0.1);
+      const loadButton = createButton("Load", 0.2, 0.1);
+      loadButton.visible = false;
+      const saveListGroup = new THREE.Group();
+
+      saveNewButton.position.set(0.5, 0.2, 0);
+      saveCurrentButton.position.set(0.5, -0.1, 0);
+      loadButton.position.set(0.5, -0.4, 0);
+      saveListGroup.position.set(-0.5, 0, 0);
+
+      const menuBgGeometry = new THREE.PlaneGeometry(1.2, 0.8); // Slightly wider
+      const menuBgMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0.7, transparent: true });
+      const menuBg = new THREE.Mesh(menuBgGeometry, menuBgMaterial);
+      menuBg.position.set(0, 0, -0.01);
+      menuBg.renderOrder = -1;
+
+      menuGroup.add(menuBg);
+      menuGroup.add(saveNewButton);
+      menuGroup.add(saveCurrentButton);
+      menuGroup.add(loadButton);
+      menuGroup.add(saveListGroup);
+
+      /* --- Mini Cube Selector Highlight --- */
+      let miniCubeHighlightMesh;
+
+      /* ---------------------------------------------------------------------------
+         Three.js Scene Setup
+      --------------------------------------------------------------------------- */
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb);
+      const world = new THREE.Group();
+      scene.add(world);
+
+      world.add(blockHighlightMesh);
+      world.add(placementIndicatorMesh);
+
+      const player = new THREE.Group();
+      world.add(player);
+      const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+      player.position.set(CHUNK_WIDTH / 2, 33.5, CHUNK_DEPTH / 2); // Start near center
+      camera.position.set(0, playerHeight * 0.9, 0); // Eye level
+      player.add(camera);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+      document.body.appendChild(VRButton.createButton(renderer));
+
+      /* ---------------------------------------------------------------------------
+         Utility Functions
+      --------------------------------------------------------------------------- */
+      function showError(msg) {
+        errorLogEl.innerText = msg;
+        errorLogEl.style.display = "block";
+      }
+      function clearError() {
+        errorLogEl.innerText = "";
+        errorLogEl.style.display = "none";
+      }
+      function generateNoiseTexture() {
+        const size = 32;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext("2d");
+        const imageData = context.createImageData(size, size);
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          const v = Math.floor(Math.random() * 256);
+          imageData.data[i] = v;
+          imageData.data[i + 1] = v;
+          imageData.data[i + 2] = v;
+          imageData.data[i + 3] = 255;
+        }
+        context.putImageData(imageData, 0, 0);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        return texture;
+      }
+      const noiseTexture = generateNoiseTexture();
+
+      function createRaycaster(controller) {
+        const tempMatrix = new THREE.Matrix4().extractRotation(controller.matrixWorld);
+        const origin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+        const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix);
+        return new THREE.Raycaster(origin, direction);
+      }
+      // --- Enhanced Collision Detection ---
+      function intersectsAABB(aMin, aMax, bMin, bMax) {
+        return (
+          aMin.x < bMax.x && aMax.x > bMin.x &&
+          aMin.y < bMax.y && aMax.y > bMin.y &&
+          aMin.z < bMax.z && aMax.z > bMin.z
+        );
+      }
+
+      function collidesAtPosition(pos) {
+        const playerMin = new THREE.Vector3(pos.x - playerRadius, pos.y, pos.z - playerRadius);
+        const playerMax = new THREE.Vector3(pos.x + playerRadius, pos.y + playerHeight, pos.z + playerRadius);
+
+        // Calculate the voxel range to check
+        const minX = Math.max(0, Math.floor(playerMin.x));
+        const maxX = Math.min(CHUNK_WIDTH - 1, Math.floor(playerMax.x));
+        const minY = Math.max(0, Math.floor(playerMin.y));
+        const maxY = Math.min(CHUNK_HEIGHT - 1, Math.floor(playerMax.y));
+        const minZ = Math.max(0, Math.floor(playerMin.z));
+        const maxZ = Math.min(CHUNK_DEPTH - 1, Math.floor(playerMax.z));
+
+        for (let i = minX; i <= maxX; i++) {
+          for (let j = minY; j <= maxY; j++) {
+            for (let k = minZ; k <= maxZ; k++) {
+              if (chunk[i]?.[j]?.[k] !== null) { // Check if chunk cell exists and is not null
+                const blockMin = new THREE.Vector3(i, j, k);
+                const blockMax = new THREE.Vector3(i + 1, j + 1, k + 1);
+                if (intersectsAABB(playerMin, playerMax, blockMin, blockMax)) {
+                  return true; // Collision detected
+                }
+              }
+            }
+          }
+        }
+        return false; // No collision
+      }
+
+      // --- Helper for movement with collision detection ---
+      function tryMove(deltaPos) {
+        const targetPos = player.position.clone().add(deltaPos);
+        if (!collidesAtPosition(targetPos)) {
+          player.position.copy(targetPos);
+          return true; // Move successful
+        }
+        return false; // Move failed due to collision
+      }
+
+
+      /* ---------------------------------------------------------------------------
+         Materials, Geometry & Global Dummy Object
+      --------------------------------------------------------------------------- */
+      const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+      const grassMaterial = new THREE.MeshStandardMaterial({ color: 0x66aa66, map: noiseTexture });
+      const dirtMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513, map: noiseTexture });
+      const dynamicMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, map: noiseTexture }); // Grey dynamic block
+      const dummy = new THREE.Object3D(); // Used for setting matrix transforms
+
+      /* ---------------------------------------------------------------------------
+         Instance ID Management
+      --------------------------------------------------------------------------- */
+      function getNextInstanceId(type) {
+          let freeList, nextInstance, capacity;
+          if (type === 'grass') {
+              freeList = freeGrassIndices; nextInstance = nextGrassInstance; capacity = grassCapacity;
+          } else if (type === 'dirt') {
+              freeList = freeDirtIndices; nextInstance = nextDirtInstance; capacity = dirtCapacity;
+          } else if (type === 'dynamic') {
+              freeList = freeDynamicIndices; nextInstance = nextDynamicInstance; capacity = dynamicCapacity;
+          } else {
+              console.error("Unknown block type for instance ID:", type);
+              return -1;
+          }
+
+          if (freeList.length > 0) {
+              return freeList.pop(); // Reuse an ID from the free list
+          } else {
+              if (nextInstance < capacity) {
+                  const id = nextInstance;
+                  // Increment the correct counter
+                  if (type === 'grass') nextGrassInstance++;
+                  else if (type === 'dirt') nextDirtInstance++;
+                  else if (type === 'dynamic') nextDynamicInstance++;
+                  return id; // Use the next sequential ID
+              } else {
+                  appendLog(`Error: Ran out of capacity for ${type} blocks!`, true);
+                  return -1; // Indicate failure
+              }
+          }
+      }
+
+      function freeInstanceId(type, instanceId) {
+          if (instanceId === null || instanceId === undefined || instanceId < 0) return;
+          if (type === 'grass') freeGrassIndices.push(instanceId);
+          else if (type === 'dirt') freeDirtIndices.push(instanceId);
+          else if (type === 'dynamic') freeDynamicIndices.push(instanceId);
+
+          // Optional: Sort free lists occasionally if needed for specific allocation strategies,
+          // but for simple pop/push, it's not necessary.
+
+          // Move the instance off-screen (or set scale to 0)
+          dummy.position.set(0, -1000, 0); // Place far below
+          dummy.scale.set(1, 1, 1);       // Ensure scale is reset
+          dummy.quaternion.identity();    // Ensure rotation is reset
+          dummy.updateMatrix();
+          if (type === 'grass') grassInstancedMesh.setMatrixAt(instanceId, dummy.matrix);
+          else if (type === 'dirt') dirtInstancedMesh.setMatrixAt(instanceId, dummy.matrix);
+          else if (type === 'dynamic') dynamicInstancedMesh.setMatrixAt(instanceId, dummy.matrix);
+
+          // Mark the corresponding mesh for update
+          if (type === 'grass') grassInstancedMesh.instanceMatrix.needsUpdate = true;
+          else if (type === 'dirt') dirtInstancedMesh.instanceMatrix.needsUpdate = true;
+          else if (type === 'dynamic') dynamicInstancedMesh.instanceMatrix.needsUpdate = true;
+
+      }
+
+      /* ---------------------------------------------------------------------------
+         World Initialization
+      --------------------------------------------------------------------------- */
+      function initChunk() {
+        // Initialize chunk array
+        for (let x = 0; x < CHUNK_WIDTH; x++) {
+          chunk[x] = [];
+          for (let y = 0; y < CHUNK_HEIGHT; y++) {
+            chunk[x][y] = new Array(CHUNK_DEPTH).fill(null);
+          }
+        }
+
+        // Create Instanced Meshes
+        grassInstancedMesh = new THREE.InstancedMesh(cubeGeometry, grassMaterial, grassCapacity);
+        dirtInstancedMesh = new THREE.InstancedMesh(cubeGeometry, dirtMaterial, dirtCapacity);
+        dynamicInstancedMesh = new THREE.InstancedMesh(cubeGeometry, dynamicMaterial, dynamicCapacity); // New dynamic mesh
+
+        grassInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // Important for updates
+        dirtInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        dynamicInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+        world.add(grassInstancedMesh);
+        world.add(dirtInstancedMesh);
+        world.add(dynamicInstancedMesh); // Add to world
+
+        // Initial world generation (flat ground)
+        for (let x = 0; x < CHUNK_WIDTH; x++) {
+          for (let z = 0; z < CHUNK_DEPTH; z++) {
+            // Dirt layer
+            for (let y = 16; y < 32; y++) {
+                const instanceId = getNextInstanceId('dirt');
+                if (instanceId !== -1) {
+                    dummy.position.set(x + 0.5, y + 0.5, z + 0.5);
+                    dummy.updateMatrix();
+                    dirtInstancedMesh.setMatrixAt(instanceId, dummy.matrix);
+                    chunk[x][y][z] = { type: "dirt", instanceId: instanceId };
+                }
+            }
+            // Grass layer
+            const y = 32;
+            const instanceId = getNextInstanceId('grass');
+             if (instanceId !== -1) {
+                dummy.position.set(x + 0.5, y + 0.5, z + 0.5);
+                dummy.updateMatrix();
+                grassInstancedMesh.setMatrixAt(instanceId, dummy.matrix);
+                chunk[x][y][z] = { type: "grass", instanceId: instanceId };
+            }
+          }
+        }
+        // Mark matrices as needing update after initial population
+        dirtInstancedMesh.instanceMatrix.needsUpdate = true;
+        grassInstancedMesh.instanceMatrix.needsUpdate = true;
+        // Dynamic mesh starts empty, no update needed yet
+      }
+
+      function initLighting() {
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+        hemiLight.position.set(0, 20, 0);
+        scene.add(hemiLight);
+      }
+
+      /* ---------------------------------------------------------------------------
+         VR Controllers & Menu Setup
+      --------------------------------------------------------------------------- */
+      let leftController, rightController;
+      function initControllers() {
+        leftController = renderer.xr.getController(0);
+        rightController = renderer.xr.getController(1);
+        player.add(leftController, rightController);
+
+        // Right controller: trigger for placing/selecting mini-cubes/menu items
+        rightController.addEventListener("selectstart", onSelectStart); // Keep using select for trigger press
+
+        [leftController, rightController].forEach((controller) => {
+          controller.addEventListener("connected", (event) => {
+            // ... (connection logic remains same) ...
+            controller.userData.handedness = event.data.handedness;
+            controller.userData.gamepad = event.data.gamepad;
+            const rayGeometry = new THREE.BufferGeometry().setFromPoints([
+              new THREE.Vector3(0, 0, 0),
+              new THREE.Vector3(0, 0, -1),
+            ]);
+            const rayMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+            const ray = new THREE.Line(rayGeometry, rayMaterial);
+            ray.name = "ray";
+            ray.scale.z = 5; // Make ray longer for easier aiming
+            controller.add(ray);
+          });
+          controller.addEventListener("disconnected", () => {
+            delete controller.userData.handedness;
+            delete controller.userData.gamepad;
+          });
+        });
+
+        const controllerModelFactory = new XRControllerModelFactory();
+        const controllerGrip1 = renderer.xr.getControllerGrip(0);
+        const controllerGrip2 = renderer.xr.getControllerGrip(1);
+        controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+        controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+        player.add(controllerGrip1, controllerGrip2);
+
+        // Attach selected block display to right controller
+        rightController.add(selectedBlockDisplay);
+        selectedBlockDisplay.position.set(0.05, -0.05, -0.1); // Adjust position slightly
+        selectedBlockDisplay.scale.set(0.5, 0.5, 0.5); // Make it smaller
+
+        // Attach menu panel to left controller
+        menuGroup.position.set(0, 0.1, -0.3);
+        menuGroup.rotation.x = -Math.PI / 6; // Angle slightly for better viewing
+        leftController.add(menuGroup);
+
+         // Attach block selector panel to left controller (below menu/log)
+        blockSelectorPanel.position.set(0, -0.1, -0.25); // Position below log/menu space
+        blockSelectorPanel.rotation.x = -Math.PI / 6; // Angle slightly
+        leftController.add(blockSelectorPanel);
+      }
+
+      /* ---------------------------------------------------------------------------
+         Block & Log UI Setup
+      --------------------------------------------------------------------------- */
+       const availableBlockTypes = [
+        { type: "grass", color: 0x66aa66, material: grassMaterial },
+        { type: "dirt", color: 0x8b4513, material: dirtMaterial },
+        { type: "dynamic", color: 0xaaaaaa, material: dynamicMaterial }, // Updated color
+      ];
+      let selectedBlockType = availableBlockTypes[0].type;
+
+      const blockSelectorPanel = new THREE.Group();
+      const miniCubeSize = 0.04; // Smaller mini cubes
+      const miniCubeSpacing = 0.05;
+      const miniCubeGeometry = new THREE.BoxGeometry(miniCubeSize, miniCubeSize, miniCubeSize);
+      const miniCubes = [];
+      availableBlockTypes.forEach((bt, i) => {
+        const miniMaterial = bt.material.clone();
+        const miniCube = new THREE.Mesh(miniCubeGeometry, miniMaterial);
+        miniCube.userData.blockType = bt.type;
+        // Position horizontally
+        miniCube.position.x = (i - (availableBlockTypes.length - 1) / 2) * miniCubeSpacing;
+        blockSelectorPanel.add(miniCube);
+        miniCubes.push(miniCube);
+      });
+
+      miniCubeHighlightMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(miniCubeSize * 1.2, miniCubeSize * 1.2, miniCubeSize * 1.2),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.4, transparent: true, depthTest: false })
+      );
+      miniCubeHighlightMesh.visible = false;
+      blockSelectorPanel.add(miniCubeHighlightMesh); // Add highlight to the panel
+
+      const selectedBlockDisplay = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1), // Use standard size geometry
+        availableBlockTypes[0].material.clone()
+      );
+      selectedBlockDisplay.name = "selectedBlockDisplay";
+
+      // Log console UI
+      const logCanvas = document.createElement("canvas"); /* ... remains same ... */
+      logCanvas.width = 512; logCanvas.height = 512; // Increase resolution
+      const logContext = logCanvas.getContext("2d");
+      const fontSize = 18; logContext.font = `${fontSize}px monospace`;
+      logContext.fillStyle = "#ffffff"; logContext.textBaseline = "top";
+      let logLines = [];
+      const logTexture = new THREE.CanvasTexture(logCanvas);
+      logTexture.magFilter = THREE.NearestFilter; logTexture.minFilter = THREE.NearestFilter;
+      const logGeometry = new THREE.PlaneGeometry(0.4, 0.4); // Slightly larger display
+      const logMaterial = new THREE.MeshBasicMaterial({ map: logTexture, transparent: true, side: THREE.DoubleSide });
+      const logMesh = new THREE.Mesh(logGeometry, logMaterial);
+      logMesh.name = "logBox";
+      logMesh.visible = true; // Start visible
+
+      function updateLogCanvas() {
+        logContext.fillStyle = "rgba(0, 0, 0, 0.7)";
+        logContext.fillRect(0, 0, logCanvas.width, logCanvas.height);
+        logContext.fillStyle = "#ffffff";
+        const lineHeight = fontSize;
+        logLines.forEach((line, i) => {
+          logContext.fillText(line, 2, i * lineHeight);
+        });
+        logTexture.needsUpdate = true;
+      }
+      function appendLog(text, force = false) {
+        if (devLogMode || force) {
+          const maxLines = Math.floor(logCanvas.height / fontSize) - 1;
+          logLines.push(text);
+          while (logLines.length > maxLines) logLines.shift(); // Use calculated max lines
+          updateLogCanvas();
+        }
+      }
+      // Initial Log Messages (update as needed)
+      appendLog("--- VR Craft v1.1 ---", true);
+      appendLog("R Trigger: Place/Select", true);
+      appendLog("R B/Y: Erase Block", true);
+      appendLog("R A/X: Jump/Fly Toggle", true);
+      appendLog("L Stick: Move / R Stick: Turn", true);
+      appendLog("L X/A: Open/Close Menu", true);
+      appendLog("Aim Mini-Cube + Trigger: Select", true);
+      appendLog("---------------------", true);
+
+
+      /* ---------------------------------------------------------------------------
+         Block Interaction Functions
+      --------------------------------------------------------------------------- */
+      function onSelectStart() { // Triggered by Right Controller Trigger (BUTTON_TRIGGER)
+        if (!gameStarted) return;
+
+        // 1. Check Menu Interaction First (if open)
+        if (menuOpen) {
+            handleMenuSelection(); // Separate function for clarity
+            return;
+        }
+
+        // 2. Check Mini Cube Selection
+        const selectorRaycaster = createRaycaster(rightController);
+        const miniIntersects = selectorRaycaster.intersectObjects(miniCubes, false);
+        if (miniIntersects.length > 0) {
+          const hit = miniIntersects[0].object;
+          const newSelectedType = hit.userData.blockType;
+          if (newSelectedType !== selectedBlockType) {
+            selectedBlockType = newSelectedType;
+            appendLog("Selected block: " + selectedBlockType, true);
+            const bt = availableBlockTypes.find((b) => b.type === selectedBlockType);
+            if (bt) {
+              // Update the small display mesh on the controller
+              selectedBlockDisplay.material = bt.material.clone();
+            }
+          }
+          miniCubeHighlightMesh.visible = false; // Hide highlight after selection
+          return; // Don't place block if mini cube was selected
+        }
+
+        // 3. If neither menu nor mini cube, attempt Block Placement
+        placeBlock();
+      }
+
+      function placeBlock() {
+        // Use the placement indicator's visibility and position
+        if (!placementIndicatorMesh.visible) {
+            //appendLog("Invalid placement location"); // Can be noisy
+            return;
+        }
+
+        // Get integer coordinates from the placement indicator
+        const px = Math.floor(placementIndicatorMesh.position.x);
+        const py = Math.floor(placementIndicatorMesh.position.y);
+        const pz = Math.floor(placementIndicatorMesh.position.z);
+
+        // Double check bounds (should be handled by indicator visibility, but good practice)
+        if (px < 0 || px >= CHUNK_WIDTH || py < 0 || py >= CHUNK_HEIGHT || pz < 0 || pz >= CHUNK_DEPTH) {
+             appendLog("Placement out of bounds", true);
+             return;
+        }
+        // Double check if occupied (should be handled by indicator visibility)
+         if (chunk[px]?.[py]?.[pz] !== null) {
+             //appendLog("Block already exists here"); // Can be noisy
+             return;
+         }
+
+        const instanceId = getNextInstanceId(selectedBlockType);
+        if (instanceId === -1) {
+            appendLog(`Cannot place ${selectedBlockType}: No capacity!`, true);
+            return; // Failed to get an ID (out of capacity)
+        }
+
+        dummy.position.copy(placementIndicatorMesh.position); // Use indicator position
+        dummy.updateMatrix();
+
+        let meshToUpdate;
+        if (selectedBlockType === 'grass') meshToUpdate = grassInstancedMesh;
+        else if (selectedBlockType === 'dirt') meshToUpdate = dirtInstancedMesh;
+        else if (selectedBlockType === 'dynamic') meshToUpdate = dynamicInstancedMesh;
+
+        if (meshToUpdate) {
+            meshToUpdate.setMatrixAt(instanceId, dummy.matrix);
+            meshToUpdate.instanceMatrix.needsUpdate = true;
+            chunk[px][py][pz] = { type: selectedBlockType, instanceId: instanceId };
+            //appendLog(`${selectedBlockType} placed at (${px},${py},${pz})`); // Log placement
+        } else {
+            // Should not happen if selectedBlockType is valid
+             console.error("Unknown block type during placement:", selectedBlockType);
+             freeInstanceId(selectedBlockType, instanceId); // Return the ID if placement failed
+        }
+      }
+
+      function handleBlockDeletion() { // Triggered by Right Controller B/Y (BUTTON_SECONDARY)
+        if(menuOpen) return; // No deletion when menu open
+
+        // Use the block highlight's visibility and position
+        if (!blockHighlightMesh.visible) {
+            // appendLog("No block targeted for deletion"); // Can be noisy
+            return;
+        }
+
+        // Get integer coordinates from the highlight mesh position
+        const hx = Math.floor(blockHighlightMesh.position.x);
+        const hy = Math.floor(blockHighlightMesh.position.y);
+        const hz = Math.floor(blockHighlightMesh.position.z);
+
+         if (hx < 0 || hx >= CHUNK_WIDTH || hy < 0 || hy >= CHUNK_HEIGHT || hz < 0 || hz >= CHUNK_DEPTH) {
+             appendLog("Targeted block out of bounds?", true); // Should not happen if highlight is correct
+             return;
+         }
+
+        const blockData = chunk[hx]?.[hy]?.[hz];
+        if (blockData) {
+            const type = blockData.type;
+            const instanceId = blockData.instanceId;
+
+            // Free the instance ID and move the instance matrix
+            freeInstanceId(type, instanceId);
+
+            // Remove from chunk data
+            chunk[hx][hy][hz] = null;
+            appendLog(`Removed ${type} at (${hx},${hy},${hz})`);
+
+            // Hide highlights as the target is gone
+            blockHighlightMesh.visible = false;
+            placementIndicatorMesh.visible = false;
+
+        } else {
+            appendLog("No block data found at highlighted position?", true); // Should not happen
+        }
+      }
+
+      /* ---------------------------------------------------------------------------
+         Highlighting (Block, Placement, Mini-Cube)
+      --------------------------------------------------------------------------- */
+      function updateHighlighting() {
+        if (!rightController?.userData?.gamepad || !gameStarted) {
+            blockHighlightMesh.visible = false;
+            placementIndicatorMesh.visible = false;
+            miniCubeHighlightMesh.visible = false;
+            return;
+        }
+
+        const raycaster = createRaycaster(rightController);
+
+        // --- 1. Check Mini Cube Intersections (only if menu is closed) ---
+        if (!menuOpen) {
+            const miniIntersects = raycaster.intersectObjects(miniCubes, false);
+            if (miniIntersects.length > 0) {
+                const miniHit = miniIntersects[0].object;
+                // Convert mini cube position in panel's local space to world space
+                const worldPos = blockSelectorPanel.localToWorld(miniHit.position.clone());
+                 // Set highlight position relative to the selector panel for stability
+                miniCubeHighlightMesh.position.copy(miniHit.position);
+                miniCubeHighlightMesh.visible = true;
+
+                // If mini cube is hit, don't show world block highlights
+                blockHighlightMesh.visible = false;
+                placementIndicatorMesh.visible = false;
+                return; // Stop processing if a mini cube is highlighted
+            } else {
+                miniCubeHighlightMesh.visible = false;
+            }
+        } else {
+             miniCubeHighlightMesh.visible = false; // Hide if menu is open
+        }
+
+
+        // --- 2. Check World Block Intersections (only if menu is closed) ---
+        if (!menuOpen) {
+            const worldMeshes = [grassInstancedMesh, dirtInstancedMesh, dynamicInstancedMesh];
+            const worldIntersects = raycaster.intersectObjects(worldMeshes, false); // Raycast against instanced meshes
+
+            if (worldIntersects.length > 0) {
+                const intersect = worldIntersects[0];
+                const instanceId = intersect.instanceId;
+                const object = intersect.object; // The InstancedMesh hit
+
+                // Get the matrix of the specific instance hit
+                object.getMatrixAt(instanceId, dummy.matrix);
+                // Decompose matrix to get world position of the instance's center
+                dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+
+                // --- Update Block Highlight ---
+                blockHighlightMesh.position.copy(dummy.position);
+                blockHighlightMesh.visible = true;
+
+                // --- Update Placement Indicator ---
+                // Calculate center of the adjacent voxel cell based on face normal
+                const placementPos = dummy.position.clone().add(intersect.face.normal.clone().multiplyScalar(0.5));
+                placementPos.floor().addScalar(0.5); // Snap to the center of the grid cell
+
+                // Check if the placement position is valid (within bounds and empty)
+                const px = Math.floor(placementPos.x);
+                const py = Math.floor(placementPos.y);
+                const pz = Math.floor(placementPos.z);
+
+                const isWithinBounds = px >= 0 && px < CHUNK_WIDTH && py >= 0 && py < CHUNK_HEIGHT && pz >= 0 && pz < CHUNK_DEPTH;
+                const isEmpty = isWithinBounds && chunk[px]?.[py]?.[pz] === null;
+
+                if (isEmpty) {
+                    placementIndicatorMesh.position.copy(placementPos);
+                    placementIndicatorMesh.visible = true;
+                } else {
+                    placementIndicatorMesh.visible = false;
+                }
+
+            } else {
+                // No world block hit
+                blockHighlightMesh.visible = false;
+                placementIndicatorMesh.visible = false;
+            }
+        } else {
+             // Menu is open, hide world highlights
+             blockHighlightMesh.visible = false;
+             placementIndicatorMesh.visible = false;
+        }
+      }
+
+
+      /* ---------------------------------------------------------------------------
+         Save/Load Functions
+      --------------------------------------------------------------------------- */
+      function saveWorld() {
+        const blocks = [];
+        for (let x = 0; x < CHUNK_WIDTH; x++) {
+          for (let y = 0; y < CHUNK_HEIGHT; y++) {
+            for (let z = 0; z < CHUNK_DEPTH; z++) {
+              if (chunk[x][y][z] !== null) {
+                // Only need position and type for saving/loading
+                blocks.push({ x, y, z, type: chunk[x][y][z].type });
+              }
+            }
+          }
+        }
+        // Also save player position and orientation?
+        const playerState = {
+            position: player.position.toArray(),
+            rotation: player.rotation.toArray() // Save Y rotation
+        };
+        return { blocks, playerState };
+      }
+
+      function clearWorld() {
+        // 1. Iterate through the chunk and free all existing instance IDs
+         for (let x = 0; x < CHUNK_WIDTH; x++) {
+          for (let y = 0; y < CHUNK_HEIGHT; y++) {
+            for (let z = 0; z < CHUNK_DEPTH; z++) {
+              const blockData = chunk[x][y][z];
+              if (blockData !== null) {
+                   freeInstanceId(blockData.type, blockData.instanceId); // Free the ID
+              }
+              // No need to explicitly set matrix off-screen here, freeInstanceId does it.
+              chunk[x][y][z] = null; // Clear chunk data
+            }
+          }
+        }
+
+        // 2. Reset next instance counters (optional, but keeps IDs sequential if world is cleared often)
+        // If you don't reset, IDs will just keep increasing until capacity is hit,
+        // relying solely on the free lists. Resetting is cleaner for a full clear.
+        // nextGrassInstance = 0;
+        // nextDirtInstance = 0;
+        // nextDynamicInstance = 0;
+        // freeGrassIndices.length = 0; // Clear free lists if resetting counters
+        // freeDirtIndices.length = 0;
+        // freeDynamicIndices.length = 0;
+
+        // Ensure meshes reflect the cleared state (freeInstanceId handles individuals, but a bulk update is good)
+        grassInstancedMesh.instanceMatrix.needsUpdate = true;
+        dirtInstancedMesh.instanceMatrix.needsUpdate = true;
+        dynamicInstancedMesh.instanceMatrix.needsUpdate = true;
+        grassInstancedMesh.count = nextGrassInstance; // Reflect potentially reduced count if counters were reset
+        dirtInstancedMesh.count = nextDirtInstance;
+        dynamicInstancedMesh.count = nextDynamicInstance;
+
+        appendLog("World cleared.", true);
+      }
+
+      function loadWorld(saveData) {
+        clearWorld(); // Clear existing world first
+
+        const blocks = saveData.blocks;
+        blocks.forEach(block => {
+          const { x, y, z, type } = block;
+          const instanceId = getNextInstanceId(type); // Get a free/new ID
+
+          if (instanceId !== -1 && x >= 0 && x < CHUNK_WIDTH && y >= 0 && y < CHUNK_HEIGHT && z >= 0 && z < CHUNK_DEPTH) {
+              dummy.position.set(x + 0.5, y + 0.5, z + 0.5);
+              dummy.updateMatrix();
+
+              let meshToUpdate;
+              if (type === 'grass') meshToUpdate = grassInstancedMesh;
+              else if (type === 'dirt') meshToUpdate = dirtInstancedMesh;
+              else if (type === 'dynamic') meshToUpdate = dynamicInstancedMesh;
+
+              if(meshToUpdate) {
+                  meshToUpdate.setMatrixAt(instanceId, dummy.matrix);
+                  chunk[x][y][z] = { type: type, instanceId: instanceId };
+              } else {
+                   console.warn(`Unknown block type "${type}" in save data.`);
+                   freeInstanceId(type, instanceId); // Return ID if block type invalid
+              }
+          } else if (instanceId === -1) {
+              appendLog(`Failed to load ${type} block at (${x},${y},${z}): No capacity!`, true);
+          } else {
+               appendLog(`Skipping block outside bounds: (${x},${y},${z})`, true);
+          }
+        });
+
+        // Mark all as needing update after load
+        grassInstancedMesh.instanceMatrix.needsUpdate = true;
+        dirtInstancedMesh.instanceMatrix.needsUpdate = true;
+        dynamicInstancedMesh.instanceMatrix.needsUpdate = true;
+        grassInstancedMesh.count = nextGrassInstance; // Update count used for rendering
+        dirtInstancedMesh.count = nextDirtInstance;
+        dynamicInstancedMesh.count = nextDynamicInstance;
+
+
+        // Restore player state if available
+        if (saveData.playerState) {
+            player.position.fromArray(saveData.playerState.position);
+            player.rotation.fromArray(saveData.playerState.rotation);
+        } else {
+            // Default position if not in save
+             player.position.set(CHUNK_WIDTH / 2, 33.5, CHUNK_DEPTH / 2);
+             player.rotation.set(0, 0, 0);
+        }
+         playerVelocity.set(0,0,0); // Reset velocity on load
+      }
+
+
+      /* ---------------------------------------------------------------------------
+         Menu UI Functions & Interactions
+      --------------------------------------------------------------------------- */
+      function toggleMenu() {
+        menuOpen = !menuOpen;
+        logMesh.visible = !menuOpen; // Hide log when menu open
+        menuGroup.visible = menuOpen;
+        // Hide world/block UI when menu open
+        blockSelectorPanel.visible = !menuOpen;
+        selectedBlockDisplay.visible = !menuOpen;
+        // Also hide highlights immediately
+        blockHighlightMesh.visible = false;
+        placementIndicatorMesh.visible = false;
+        miniCubeHighlightMesh.visible = false;
+
+        if (menuOpen) {
+          updateMenuUI();
+        } else {
+          currentSelectedSaveIndex = null;
+          loadButton.visible = false; // Hide load button when closing menu
+        }
+      }
+
+      // Update the menu UI: read saves from localStorage and populate saveListGroup.
+      function updateMenuUI() {
+        while (saveListGroup.children.length > 0) {
+          saveListGroup.remove(saveListGroup.children[0]);
+        }
+        const saves = JSON.parse(localStorage.getItem("webxrMinecraftSaves") || "[]");
+        saves.forEach((save, index) => {
+          const btn = createButton(save.name, 0.2, 0.1);
+          btn.position.set(0, -index * 0.25, 0);
+          btn.userData.saveIndex = index;
+          saveListGroup.add(btn);
+        });
+      }
+
+      function rightTriggerPressed() { // Check specifically for trigger press
+          if (!rightController?.userData?.gamepad) return false;
+          // Check button index defined by constant
+          const triggerState = rightController.userData.gamepad.buttons[BUTTON_TRIGGER];
+          if (!triggerState) return false; // Button might not exist on controller
+
+          const pressed = triggerState.pressed;
+          if (pressed && !prevRightTriggerPressed) {
+              prevRightTriggerPressed = true;
+              return true; // Rising edge detected
+          }
+          if (!pressed) {
+              prevRightTriggerPressed = false;
+          }
+          return false; // Not a rising edge
+      }
+
+      // --- Menu Actions ---
+      function onSaveNew() {
+        const worldData = saveWorld();
+        const now = new Date();
+        const name = now.toLocaleString();
+        const saves = JSON.parse(localStorage.getItem("webxrMinecraftSaves") || "[]");
+        if (saves.length >= 10) { saves.shift(); }
+        saves.push({ name: name, data: worldData });
+        localStorage.setItem("webxrMinecraftSaves", JSON.stringify(saves));
+        currentSaveName = name;
+        appendLog("World saved as new: " + name);
+        updateMenuUI();
+      }
+      function onSaveCurrent() {
+        if (!currentSaveName) {
+          appendLog("No current save; using Save New instead.");
+          onSaveNew();
+          return;
+        }
+        const worldData = saveWorld();
+        const saves = JSON.parse(localStorage.getItem("webxrMinecraftSaves") || "[]");
+        const index = saves.findIndex(s => s.name === currentSaveName);
+        if (index !== -1) {
+          saves[index].data = worldData;
+          localStorage.setItem("webxrMinecraftSaves", JSON.stringify(saves));
+          appendLog("World saved on current: " + currentSaveName);
+        } else {
+          onSaveNew();
+        }
+        updateMenuUI();
+      }
+      function onLoad() {
+        if (currentSelectedSaveIndex === null) return;
+        const saves = JSON.parse(localStorage.getItem("webxrMinecraftSaves") || "[]");
+        if (currentSelectedSaveIndex < saves.length) {
+          const saveData = saves[currentSelectedSaveIndex].data;
+          loadWorld(saveData);
+          currentSaveName = saves[currentSelectedSaveIndex].name;
+          appendLog("World loaded: " + currentSaveName);
+        }
+      }
+
+      // --- Handle Menu Selection (called from onSelectStart) ---
+      function handleMenuSelection() {
+           const raycaster = createRaycaster(rightController);
+           // Intersect with direct children of menuGroup + children of saveListGroup
+           const menuButtons = [saveNewButton, saveCurrentButton, loadButton];
+           const saveListButtons = saveListGroup.children;
+           const allButtons = [...menuButtons, ...saveListButtons];
+
+           const intersects = raycaster.intersectObjects(allButtons, false); // Don't intersect descendants further
+
+           // Reset scaling first
+           allButtons.forEach(btn => btn.scale.set(1, 1, 1));
+           loadButton.visible = (currentSelectedSaveIndex !== null); // Ensure load visibility is correct
+
+
+           if (intersects.length > 0) {
+                const hit = intersects[0].object;
+                hit.scale.set(1.2, 1.2, 1.2); // Highlight selected button
+
+                if (rightTriggerPressed()) { // Use the specific trigger check
+                    const text = hit.userData.buttonText;
+                    if (text === "Save New") onSaveNew();
+                    else if (text === "Save on Current") onSaveCurrent();
+                    else if (text === "Load" && loadButton.visible) onLoad(); // Only load if button visible
+                    else if (hit.userData.saveIndex !== undefined) {
+                        // Select a save slot
+                        currentSelectedSaveIndex = hit.userData.saveIndex;
+                        appendLog(`Selected save slot: ${saves[currentSelectedSaveIndex]?.name}`, true);
+                        loadButton.visible = true; // Show load button now
+                    }
+                    // Potentially close menu after action?
+                    // toggleMenu();
+                }
+           }
+           // No else needed to reset scale here, done at the beginning
+      }
+
+      // (updateMenuInteraction function is now integrated into handleMenuSelection and onSelectStart)
+
+      /* ---------------------------------------------------------------------------
+         Left Controller Menu Toggle Handling
+      --------------------------------------------------------------------------- */
+      function updateLeftControllerActions() {
+        if (!leftController?.userData?.gamepad) return;
+        // Use constant for the button index
+        const xButtonState = leftController.userData.gamepad.buttons[BUTTON_PRIMARY]; // X/A button
+        if (!xButtonState) return;
+
+        const xButtonPressed = xButtonState.pressed;
+        if (xButtonPressed && !prevLeftXPressed) {
+          toggleMenu();
+        }
+        prevLeftXPressed = xButtonPressed;
+      }
+
+      /* ---------------------------------------------------------------------------
+         Input Handling & Animation Loop
+      --------------------------------------------------------------------------- */
+      const clock = new THREE.Clock();
+      const playerVelocity = new THREE.Vector3(0, 0, 0);
+      let playerOnGround = false;
+
+      renderer.setAnimationLoop(() => {
+        if (!gameStarted) return; // Don't run updates until VR entered
+
+        const delta = Math.min(clock.getDelta(), 0.1); // Clamp delta to avoid large jumps
+
+        updateLeftControllerActions(); // Check for menu toggle first
+
+        if (!menuOpen) { // Only update game world if menu is closed
+            updateVerticalPhysics(delta);
+            updateHorizontalMovement(delta);
+            updateRightControllerActions(delta); // Handles jump, fly, delete, turn
+            updatePlayerRescue();
+            updateHighlighting(); // Update block/placement highlights
+        } else {
+            // updateMenuInteraction(); // Now handled within onSelectStart->handleMenuSelection
+             // We still need to check for trigger presses while menu is open for selection:
+            if (rightTriggerPressed()) {
+                // The actual selection logic happens in onSelectStart -> handleMenuSelection
+                // but we need to consume the trigger press state here.
+            }
+             // Keep ray visible when menu is open for aiming
+            if(rightController?.getObjectByName('ray')) rightController.getObjectByName('ray').visible = true;
+
+        }
+
+        // Always keep UI attached (visibility is handled elsewhere)
+        attachControllerUI();
+
+        renderer.render(scene, camera);
+      });
+
+      function updateVerticalPhysics(delta) {
+        const gpRight = rightController?.userData?.gamepad;
+
+        if (isFlying) {
+            playerVelocity.y = 0; // No gravity when flying
+             // Use right stick vertical for up/down flying
+            if (gpRight) {
+                const flyVerticalAxis = gpRight.axes[AXIS_FORWARD] || 0; // Use forward/back axis
+                const dy = flyVerticalAxis * -1 * flySpeed * 20 * delta; // Vertical fly speed based on delta
+                 if (Math.abs(dy) > 0.001) {
+                    tryMove(new THREE.Vector3(0, dy, 0));
+                 }
+            }
+            playerOnGround = false;
+        } else {
+            // Apply gravity
+            playerVelocity.y += gravity * delta;
+            // Clamp terminal velocity
+            playerVelocity.y = Math.max(playerVelocity.y, -20);
+
+            const deltaY = playerVelocity.y * delta;
+            const moved = tryMove(new THREE.Vector3(0, deltaY, 0));
+
+            if (!moved && deltaY < 0) { // If falling and hit something
+                playerVelocity.y = 0;
+                playerOnGround = true;
+            } else {
+                 // Check if grounded after movement attempt (small downward check)
+                 const groundCheckPos = player.position.clone().add(new THREE.Vector3(0, -0.1, 0));
+                 playerOnGround = collidesAtPosition(groundCheckPos);
+                 if(playerOnGround && playerVelocity.y < 0) {
+                     playerVelocity.y = 0; // Stop downward velocity if just landed
+                 }
+            }
+        }
+      }
+
+      function updateHorizontalMovement(delta) {
+          const gpLeft = leftController?.userData?.gamepad;
+          if (!gpLeft) return;
+
+          const yAxis = gpLeft.axes[AXIS_FORWARD] * -1 || 0; // Forward/Backward
+          const xAxis = gpLeft.axes[AXIS_SIDEWAYS] * -1 || 0; // Strafe Left/Right
+
+          const currentMoveSpeed = (isFlying ? flySpeed : moveSpeed);
+          const speedMultiplier = 100 * delta; // Scale speed by delta
+
+          const cameraForward = new THREE.Vector3();
+          camera.getWorldDirection(cameraForward); // Get direction camera is facing
+          cameraForward.y = 0; // Project onto XZ plane
+          cameraForward.normalize();
+
+          const cameraRight = new THREE.Vector3();
+          // Use player's up vector (0,1,0) crossed with forward to get right, ensures it's flat
+          cameraRight.crossVectors(player.up, cameraForward).normalize();
+
+          // Calculate desired move vector based on input and camera orientation
+          const moveVector = new THREE.Vector3();
+          moveVector.addScaledVector(cameraForward, yAxis * currentMoveSpeed * speedMultiplier);
+          moveVector.addScaledVector(cameraRight, xAxis * currentMoveSpeed * speedMultiplier);
+
+          if (moveVector.lengthSq() < 0.0001) return; // No significant movement input
+
+          // --- Sliding Collision Response ---
+          // 1. Try moving along the full combined vector
+          if (tryMove(moveVector)) {
+              return; // Full move successful
+          }
+
+          // 2. If full move failed, try moving along X component only
+          const moveX = new THREE.Vector3(moveVector.x, 0, 0);
+          const movedX = tryMove(moveX);
+
+          // 3. Try moving along Z component only
+          const moveZ = new THREE.Vector3(0, 0, moveVector.z);
+          const movedZ = tryMove(moveZ);
+
+          // If only one direction worked, it achieves sliding.
+          // If neither worked, the player is stuck in a corner (or against a single wall if input is diagonal).
+      }
+
+
+      function updateRightControllerActions(delta) {
+        if (!rightController?.userData?.gamepad) return;
+        const gp = rightController.userData.gamepad;
+
+        // --- Turning (Right Stick Horizontal) ---
+        // Always allow turning, flying or not
+        const turnX = gp.axes[AXIS_SIDEWAYS] || 0;
+        if (Math.abs(turnX) > 0.1) { // Add a small deadzone
+             player.rotation.y -= turnX * turnSpeed * 50 * delta; // Scale by delta
+        }
+
+        // --- Block Deletion (B/Y Button) ---
+        const bButtonState = gp.buttons[BUTTON_SECONDARY];
+        if (bButtonState) {
+            if (bButtonState.pressed && !prevBPressed) {
+                handleBlockDeletion(); // Call deletion logic
+            }
+            prevBPressed = bButtonState.pressed;
+        } else {
+            prevBPressed = false;
+        }
+
+
+        // --- Jump / Toggle Fly (A/X Button) ---
+        const aButtonState = gp.buttons[BUTTON_PRIMARY];
+        if (aButtonState) {
+            if (aButtonState.pressed && !prevAPressed) {
+                const now = performance.now();
+                // Double Tap Check for Fly Toggle
+                if (now - lastAPressTime < doubleTapThreshold) {
+                    isFlying = !isFlying;
+                    appendLog("Fly mode " + (isFlying ? "ENABLED" : "DISABLED"), true);
+                    playerVelocity.y = 0; // Reset vertical velocity when toggling fly
+                    // Optional: give a small upward boost when enabling fly?
+                    // if (isFlying) tryMove(new THREE.Vector3(0, 0.2, 0));
+                }
+                // Single Tap Check for Jump (only if not flying and on ground)
+                else if (!isFlying && playerOnGround) {
+                     playerVelocity.y = jumpSpeed; // Apply jump force
+                     playerOnGround = false; // No longer on ground
+                     appendLog("Jump!", true);
+                }
+                // else if (!isFlying && !playerOnGround) { appendLog("Cannot jump mid-air"); } // Optional feedback
+
+                lastAPressTime = now;
+            }
+            prevAPressed = aButtonState.pressed;
+        } else {
+             prevAPressed = false;
+        }
+      }
+
+      function updatePlayerRescue() {
+        if (player.position.y < -20) { // Lower threshold for rescue
+          // Find a safe spot (e.g., highest block near center) - Basic implementation
+           let rescueY = 33; // Default height
+           const checkX = Math.floor(CHUNK_WIDTH / 2);
+           const checkZ = Math.floor(CHUNK_DEPTH / 2);
+           for (let y = CHUNK_HEIGHT -1; y > 0; y--) {
+               if (chunk[checkX]?.[y]?.[checkZ] !== null) {
+                   rescueY = y + 1.5; // Place slightly above highest block found
+                   break;
+               }
+           }
+          player.position.set(checkX + 0.5, rescueY, checkZ + 0.5);
+          playerVelocity.set(0, 0, 0); // Stop momentum
+          isFlying = false; // Disable fly mode if rescued
+          appendLog("Player fell into void, rescuing...", true);
+        }
+      }
+
+      function attachControllerUI() {
+         // Logic to initially add the log mesh and block selector (if not already added)
+         // Visibility is controlled elsewhere (toggleMenu, updateHighlighting)
+          if (leftController && !menuGroup.visible) { // Attach log/selector only if menu is closed
+              if (!leftController.getObjectByName("logBox")) {
+                    leftController.add(logMesh);
+                    logMesh.position.set(0, 0.15, -0.2); // Adjust position
+                    logMesh.rotation.x = -Math.PI / 6;
+                    logMesh.visible = true; // Ensure visible if menu is closed
+              }
+              if (!leftController.getObjectByName(blockSelectorPanel.name)) { // Assuming blockSelectorPanel has a name or check children
+                   // Already added during initControllers, just manage visibility
+                   blockSelectorPanel.visible = true;
+              }
+
+          }
+          // Ensure the raycaster line is visible when needed (menu open or menu closed)
+          if (rightController?.getObjectByName('ray')) {
+              rightController.getObjectByName('ray').visible = true; // Keep ray always visible for aiming
+          }
+          // Ensure selected block display is visible when needed
+           if (rightController?.getObjectByName('selectedBlockDisplay')) {
+               selectedBlockDisplay.visible = !menuOpen; // Visible only when menu is closed
+           }
+      }
+
+
+      /* ---------------------------------------------------------------------------
+         XR Session & Window Resize Handling
+      --------------------------------------------------------------------------- */
+      const splash = document.getElementById("splash");
+      const enterVRButton = document.getElementById("enterVRButton");
+      enterVRButton.addEventListener("click", async () => {
+        splash.style.display = "none";
+        if (!navigator.xr) {
+            showError("WebXR not available.");
+            return;
+        }
+        try {
+            const supported = await navigator.xr.isSessionSupported("immersive-vr");
+            if (!supported) {
+                showError("Immersive VR not supported. Try VR headset or compatible browser.");
+                return;
+            }
+            // Request session with local-floor reference space
+            const session = await navigator.xr.requestSession("immersive-vr", {
+                requiredFeatures: ["local-floor"],
+                // optionalFeatures: ['hand-tracking'] // Example if you add hand tracking later
+            });
+            renderer.xr.setReferenceSpaceType('local-floor'); // Important for grounded experiences
+            await renderer.xr.setSession(session);
+            clearError();
+            gameStarted = true; // Start game logic only after session starts
+            appendLog("VR Session Started!", true);
+             // Re-center player slightly above origin upon entry?
+            // player.position.set(player.position.x, 1.0, player.position.z); // Adjust Y based on floor level if needed
+
+        } catch (e) {
+            showError("Failed to start XR session: " + e.message);
+            console.error("XR Session Error:", e);
+            splash.style.display = "flex"; // Show splash again on error
+        }
+      });
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      /* ---------------------------------------------------------------------------
+         Initialization Sequence
+      --------------------------------------------------------------------------- */
+      initChunk();
+      initLighting();
+      initControllers();
+      updateLogCanvas(); // Initial log draw
+
+    </script>
+  </body>
+</html>

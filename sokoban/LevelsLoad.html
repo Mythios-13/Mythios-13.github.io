@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Sokoban - Dynamic Levels</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column; /* Stack elements vertically */
+            align-items: center; /* Center horizontally */
+            justify-content: center; /* Center vertically */
+            min-height: 100vh;
+            background-color: #e0e0e0; /* Lighter gray background */
+            margin: 0;
+            padding-top: 20px; /* Add some padding top */
+            padding-bottom: 20px; /* Add some padding bottom */
+        }
+
+        #game-container {
+            border: 2px solid #555;
+            background-color: #f8f8f8; /* Slightly off-white */
+            padding: 15px;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border-radius: 8px; /* Rounded corners */
+            max-width: 95vw; /* Prevent container from being too wide */
+        }
+
+        h1 {
+             margin-top: 0;
+             color: #333;
+             text-align: center;
+        }
+
+        #game-canvas {
+            border: 1px solid #aaa;
+            margin-bottom: 15px; /* Space below the canvas */
+            background-color: #fff; /* White background for the canvas area itself */
+             /* Dimensions will be set by JS */
+             max-width: 100%; /* Ensure canvas scales down if needed */
+             height: auto; /* Maintain aspect ratio */
+             display: block; /* Remove extra space below canvas */
+        }
+
+        #status {
+            margin-bottom: 10px; /* Space below status */
+            font-size: 1.1em;
+            color: #444;
+            font-weight: bold;
+            text-align: center;
+        }
+         #level-info {
+             margin-bottom: 10px;
+             font-size: 0.9em;
+             color: #666;
+             text-align: center;
+             min-height: 1.2em; /* Reserve space */
+         }
+
+        #controls {
+            margin-top: 10px;
+            text-align: center;
+            color: #555;
+            font-size: 0.9em;
+        }
+         #win-message {
+             margin-top: 15px;
+             font-size: 1.5em;
+             color: #28a745; /* Bootstrap success green */
+             font-weight: bold;
+             text-align: center;
+             display: none; /* Hidden initially */
+             padding: 10px;
+             background-color: #d4edda; /* Light green background */
+             border: 1px solid #c3e6cb; /* Green border */
+             border-radius: 5px;
+         }
+         #loading-message {
+             font-size: 1.2em;
+             color: #555;
+             margin-top: 20px;
+         }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <h1>Canvas Sokoban</h1>
+        <div id="status">Loading Levels...</div>
+        <div id="level-info"></div> {/* Added div for level name/metadata */}
+        <canvas id="game-canvas"></canvas>
+        <div id="loading-message" style="display: none;">Loading...</div> {/* Loading indicator */}
+         <div id="win-message">You Won! Press N for Next Level</div>
+        <div id="controls">
+            Use Arrow Keys to move. Push boxes (📦) onto goals (🎯).
+            <br>Press R to restart level. N for Next (when won).
+        </div>
+    </div>
+
+    <script>
+        // --- Constants ---
+        const TILE = {
+            WALL: '#',
+            FLOOR: ' ',
+            GOAL: '.',
+            PLAYER: '@',
+            BOX: '$',
+            BOX_ON_GOAL: '*',
+            PLAYER_ON_GOAL: '+'
+        };
+
+        const LEVELS_URL = './Sokoban.txt'; // more levels at https://borgar.net/programs/sokoban/#Microban
+        // Alternative if the above proxy is down or for local testing: Use a simpler proxy or download the file.
+        // const LEVELS_URL = 'https://api.allorigins.win/raw?url=https://borgar.net/programs/sokoban/levels/Sokoban.txt';
+
+
+        // --- Graphics Configuration ---
+        const tileSize = 30; // Adjusted tile size slightly
+        const colors = { /* ... colors remain the same ... */
+            wall: '#5a5a5a', floor: '#eeeeee', goal: '#ffcc80',
+            goalMarker: '#ffa726', player: '#42a5f5', box: '#8d6e63',
+            boxOnGoal: '#7cb342'
+        };
+        const emoji = { /* ... emoji remain the same ... */
+            player: '🧑', box: '📦', goal: '🎯', boxOnGoal: '✅'
+         };
+        const useEmoji = true;
+
+
+        // --- Game State ---
+        let levels = []; // Will be populated by fetching
+        let levelMetadata = []; // To store level names/comments
+        let currentLevelIndex = 0;
+        let currentMap = [];
+        let playerPos = { x: 0, y: 0 };
+        let moveCount = 0;
+        let goalPositions = [];
+        let isLoading = false; // Flag to prevent input during level load
+
+
+        // --- DOM & Canvas Elements ---
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const statusElement = document.getElementById('status');
+        const levelInfoElement = document.getElementById('level-info'); // Get the new element
+        const winMessageElement = document.getElementById('win-message');
+        const loadingMessageElement = document.getElementById('loading-message');
+
+
+        // --- Level Parsing Function ---
+        function parseSokobanText(text) {
+            const lines = text.split('\n');
+            const parsedLevels = [];
+            const parsedMetadata = [];
+            let currentLevel = [];
+            let currentMeta = []; // Collect metadata lines for the current level
+
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+
+                if (trimmedLine === '' || trimmedLine.startsWith(';')) {
+                    // Separator line or comment
+                    if (currentLevel.length > 0) {
+                        // End of a level block
+                        parsedLevels.push(currentLevel);
+                        // Use the first comment line as the title, or default
+                        const title = currentMeta.find(m => m.trim() !== '') || `Level ${parsedLevels.length}`;
+                        parsedMetadata.push(title.replace(/^;\s*/, '')); // Clean up semicolon prefix
+                        currentLevel = [];
+                        currentMeta = [];
+                    }
+                    // If it's a comment, store it
+                    if (trimmedLine.startsWith(';')) {
+                        currentMeta.push(trimmedLine);
+                    }
+                } else if (trimmedLine.includes('#')) { // Assume lines with '#' are part of the map
+                    // Map line - use the original line to preserve indentation
+                     // Find the position of the first '#' to potentially trim leading whitespace
+                     // BUT, some levels rely on leading spaces, so maybe don't trim? Let's keep original lines.
+                    currentLevel.push(line.replace(/\r$/, '')); // Add the line, remove potential carriage return
+                }
+            }
+
+            // Add the last level if the file doesn't end with a separator
+            if (currentLevel.length > 0) {
+                 parsedLevels.push(currentLevel);
+                 const title = currentMeta.find(m => m.trim() !== '') || `Level ${parsedLevels.length}`;
+                 parsedMetadata.push(title.replace(/^;\s*/, ''));
+            }
+
+             console.log(`Parsed ${parsedLevels.length} levels.`);
+            return { levels: parsedLevels, metadata: parsedMetadata };
+        }
+
+
+        // --- Drawing Functions (Unchanged - but ensure they exist) ---
+        // drawFloor, drawWall, drawGoal, drawPlayer, drawBox (as defined in previous step)
+
+        function drawFloor(x, y) { ctx.fillStyle = colors.floor; ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize); }
+        function drawWall(x, y) { ctx.fillStyle = colors.wall; ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize); /* Optional border? */ }
+        function drawGoal(x, y) {
+            ctx.fillStyle = colors.goal; ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+            if (useEmoji) { ctx.font = `${tileSize * 0.6}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(emoji.goal, x * tileSize + tileSize / 2, y * tileSize + tileSize / 2); }
+            else { /* Draw simple marker */ }
+        }
+        function drawPlayer(x, y, onGoal) {
+            if (onGoal) { drawGoal(x, y); } else { drawFloor(x, y); }
+            if (useEmoji) { ctx.font = `${tileSize * 0.7}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(emoji.player, x * tileSize + tileSize / 2, y * tileSize + tileSize / 2 + tileSize * 0.05); }
+            else { /* Draw simple player */ }
+        }
+        function drawBox(x, y, onGoal) {
+            if (onGoal) { drawGoal(x, y); } else { drawFloor(x, y); }
+            const char = onGoal ? emoji.boxOnGoal : emoji.box;
+            if (useEmoji) { ctx.font = `${tileSize * 0.7}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(char, x * tileSize + tileSize / 2, y * tileSize + tileSize / 2); }
+            else { /* Draw simple box */ }
+        }
+
+
+        // --- Main Rendering Function (Unchanged - but ensure it exists) ---
+        function renderCanvas() {
+            // Calculate map dimensions
+             if (!currentMap || currentMap.length === 0) {
+                 console.warn("Attempting to render empty map");
+                 // Optionally clear canvas or show placeholder
+                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                 return;
+             }
+            const mapHeight = currentMap.length;
+             // Find the maximum width of any row in the current map
+            const mapWidth = Math.max(...currentMap.map(row => row.length));
+
+            // Set canvas size based on map and tileSize
+            const expectedWidth = mapWidth * tileSize;
+            const expectedHeight = mapHeight * tileSize;
+            if (canvas.width !== expectedWidth || canvas.height !== expectedHeight) {
+                canvas.width = expectedWidth;
+                canvas.height = expectedHeight;
+                // Reset font etc. after resize if needed (browser might do it)
+                 ctx.font = `${tileSize * 0.7}px sans-serif`; // Example reset
+                 ctx.textAlign = 'center';
+                 ctx.textBaseline = 'middle';
+            }
+
+            // Clear the entire canvas
+             ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw each tile
+            for (let y = 0; y < mapHeight; y++) {
+                 const row = currentMap[y] || ""; // Handle potentially undefined rows if map isn't rectangular
+                for (let x = 0; x < mapWidth; x++) {
+                    const tile = row[x] || TILE.FLOOR; // Default to floor if row is short
+
+                    switch (tile) {
+                        case TILE.WALL: drawWall(x, y); break;
+                        case TILE.FLOOR: drawFloor(x, y); break;
+                        case TILE.GOAL: drawGoal(x, y); break;
+                        case TILE.PLAYER: drawPlayer(x, y, false); break;
+                        case TILE.BOX: drawBox(x, y, false); break;
+                        case TILE.BOX_ON_GOAL: drawBox(x, y, true); break;
+                        case TILE.PLAYER_ON_GOAL: drawPlayer(x, y, true); break;
+                        default: drawFloor(x, y); // Treat unknown chars as floor
+                    }
+                }
+            }
+        }
+
+
+        // --- Game Logic Functions (Unchanged - check getTile/setTile boundaries) ---
+         function isWall(x, y) { return getTile(x, y) === TILE.WALL; }
+         function isBox(x, y) { const tile = getTile(x, y); return tile === TILE.BOX || tile === TILE.BOX_ON_GOAL; }
+         function isGoal(x, y) { return goalPositions.some(pos => pos.x === x && pos.y === y); }
+
+         function getTile(x, y) {
+             if (y < 0 || y >= currentMap.length || x < 0 || !currentMap[y] || x >= currentMap[y].length) {
+                 // Treat outside bounds or short rows as empty space (effectively floor for movement, but drawn as nothing/background)
+                 // Or potentially return WALL if preferred to block movement into non-defined areas. Let's return FLOOR for now.
+                 return TILE.FLOOR; // Or maybe WALL? Depends on desired behavior for non-rectangular maps
+             }
+             return currentMap[y][x];
+         }
+
+         function setTile(x, y, tile) {
+             if (y >= 0 && y < currentMap.length && currentMap[y] && x >= 0 ) {
+                 const rowArray = currentMap[y].split('');
+                 // Pad row with spaces if setting beyond current length (needed for non-rectangular levels)
+                 while (x >= rowArray.length) {
+                     rowArray.push(TILE.FLOOR);
+                 }
+                 rowArray[x] = tile;
+                 currentMap[y] = rowArray.join('');
+             } else {
+                 console.warn(`Attempted to set tile outside bounds or on invalid row at (${x}, ${y})`);
+             }
+         }
+
+
+        function loadLevel(levelIndex) {
+            if (isLoading) return false; // Prevent loading while already loading
+            if (!levels || levels.length === 0) {
+                statusElement.textContent = "No levels loaded!";
+                return false;
+            }
+             if (levelIndex < 0 || levelIndex >= levels.length) {
+                winMessageElement.textContent = "You beat all levels! 🎉";
+                winMessageElement.style.display = 'block';
+                 canvas.style.opacity = 0.5;
+                 statusElement.textContent = `Finished!`;
+                 levelInfoElement.textContent = `${levels.length} Levels Completed`;
+                return false; // Index out of bounds
+            }
+
+            isLoading = true;
+            loadingMessageElement.style.display = 'block'; // Show loading indicator
+            canvas.style.opacity = 0.5; // Dim canvas during load
+            winMessageElement.style.display = 'none'; // Hide win message
+
+             // Use setTimeout to allow the loading message to render before potential blocking work
+             setTimeout(() => {
+                 currentLevelIndex = levelIndex;
+                 currentMap = levels[currentLevelIndex].map(row => row); // Deep copy
+                 moveCount = 0;
+                 goalPositions = [];
+                 playerPos = { x: -1, y: -1 }; // Reset player pos
+
+                 let maxRowWidth = 0; // Find max width for padding
+
+                 // Find player, goals, max width, and initialize state
+                 for (let y = 0; y < currentMap.length; y++) {
+                      maxRowWidth = Math.max(maxRowWidth, currentMap[y].length);
+                     for (let x = 0; x < currentMap[y].length; x++) {
+                         const tile = currentMap[y][x];
+                         let originalTileIsGoal = (tile === TILE.GOAL || tile === TILE.BOX_ON_GOAL || tile === TILE.PLAYER_ON_GOAL);
+
+                         if (originalTileIsGoal) {
+                             goalPositions.push({ x, y });
+                         }
+
+                         if (tile === TILE.PLAYER || tile === TILE.PLAYER_ON_GOAL) {
+                             if (playerPos.x !== -1) console.warn("Multiple player start positions found in level!");
+                             playerPos = { x, y };
+                             setTile(x, y, originalTileIsGoal ? TILE.PLAYER_ON_GOAL : TILE.PLAYER);
+                         } else if (tile === TILE.BOX || tile === TILE.BOX_ON_GOAL) {
+                             setTile(x, y, originalTileIsGoal ? TILE.BOX_ON_GOAL : TILE.BOX);
+                         } else if (tile === TILE.GOAL) {
+                              setTile(x, y, TILE.GOAL); // Ensure empty goals are marked
+                         } else if (tile === TILE.WALL) {
+                              setTile(x, y, TILE.WALL); // Ensure walls are marked
+                         } else {
+                             // Treat other characters (like spaces) as floor
+                             setTile(x, y, TILE.FLOOR);
+                         }
+                     }
+                 }
+
+                 // Pad shorter rows with FLOOR tiles to make the map rectangular for rendering
+                  currentMap = currentMap.map(row => row.padEnd(maxRowWidth, TILE.FLOOR));
+
+
+                 if(playerPos.x === -1) {
+                     console.error(`Player start position not found in level ${levelIndex + 1}!`);
+                     statusElement.textContent = `Error: No player in Level ${levelIndex + 1}`;
+                     isLoading = false;
+                     loadingMessageElement.style.display = 'none';
+                     return; // Don't proceed if player is missing
+                 }
+
+
+                 renderCanvas(); // Render the newly processed map
+                 updateStatus();
+                 levelInfoElement.textContent = levelMetadata[currentLevelIndex] || `Level ${currentLevelIndex + 1}`; // Display level name
+
+
+                 // Hide loading message and restore canvas opacity
+                 loadingMessageElement.style.display = 'none';
+                 canvas.style.opacity = 1;
+                 isLoading = false; // Loading complete
+
+            }, 10); // Small delay
+
+            return true;
+        }
+
+        function updateStatus() {
+             statusElement.textContent = `Level: ${currentLevelIndex + 1} / ${levels.length} | Moves: ${moveCount}`;
+        }
+
+        function movePlayer(dx, dy) {
+            if (isLoading || winMessageElement.style.display === 'block') return; // Ignore input during load or win
+
+            const currentX = playerPos.x;
+            const currentY = playerPos.y;
+            const nextX = currentX + dx;
+            const nextY = currentY + dy;
+            const nextNextX = nextX + dx;
+            const nextNextY = nextY + dy;
+
+            const nextTile = getTile(nextX, nextY);
+
+            if (nextTile === TILE.WALL) return;
+
+            let moved = false; // Flag to track if a move occurred
+
+            if (nextTile === TILE.BOX || nextTile === TILE.BOX_ON_GOAL) {
+                const afterBoxTile = getTile(nextNextX, nextNextY);
+                if (afterBoxTile !== TILE.WALL && afterBoxTile !== TILE.BOX && afterBoxTile !== TILE.BOX_ON_GOAL) {
+                    // Push the box
+                    setTile(nextNextX, nextNextY, isGoal(nextNextX, nextNextY) ? TILE.BOX_ON_GOAL : TILE.BOX);
+                    // Move Player into box's old spot
+                    setTile(nextX, nextY, isGoal(nextX, nextY) ? TILE.PLAYER_ON_GOAL : TILE.PLAYER);
+                    moved = true;
+                }
+            } else {
+                // Simple move
+                setTile(nextX, nextY, isGoal(nextX, nextY) ? TILE.PLAYER_ON_GOAL : TILE.PLAYER);
+                moved = true;
+            }
+
+            if (moved) {
+                // Update Player's Previous Position
+                setTile(currentX, currentY, isGoal(currentX, currentY) ? TILE.GOAL : TILE.FLOOR);
+                // Update player state
+                playerPos = { x: nextX, y: nextY };
+                moveCount++;
+                renderCanvas();
+                updateStatus();
+                checkWinCondition();
+            }
+        }
+
+
+        function checkWinCondition() {
+            if (goalPositions.length === 0 && levels.length > 0) {
+                 // Handle levels with no goals? Maybe auto-win or show message?
+                 // For now, assume levels without goals can't be "won" in the traditional sense.
+                 console.warn(`Level ${currentLevelIndex + 1} has no goals defined.`);
+                 return false;
+            }
+
+            for (const goal of goalPositions) {
+                if (getTile(goal.x, goal.y) !== TILE.BOX_ON_GOAL) {
+                    return false; // Found a goal not covered by a box
+                }
+            }
+
+            // All goals are covered
+            if (goalPositions.length > 0) { // Only show win if there were goals
+                 winMessageElement.textContent = `Level ${currentLevelIndex + 1} Cleared! Press N for Next.`;
+                 winMessageElement.style.display = 'block';
+                 return true;
+            }
+             return false;
+        }
+
+        // --- Event Listener (Unchanged structure, check isLoading) ---
+        document.addEventListener('keydown', (event) => {
+            if (isLoading) return; // Ignore all input while loading
+
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+                event.preventDefault();
+            }
+
+            if (winMessageElement.style.display === 'block') {
+                if (event.key.toUpperCase() === 'N') {
+                    loadLevel(currentLevelIndex + 1);
+                } else if (event.key.toUpperCase() === 'R') {
+                     loadLevel(currentLevelIndex); // Restart current level
+                }
+                return;
+            }
+
+            switch (event.key) {
+                case "ArrowUp": movePlayer(0, -1); break;
+                case "ArrowDown": movePlayer(0, 1); break;
+                case "ArrowLeft": movePlayer(-1, 0); break;
+                case "ArrowRight": movePlayer(1, 0); break;
+                case "R": case "r": loadLevel(currentLevelIndex); break;
+                case "N": case "n":
+                    // Allow 'N' only if win condition is met (or maybe always allow for skipping?)
+                    // Let's allow only if win message is visible (handled above) or condition met
+                    if (checkWinCondition()) {
+                         loadLevel(currentLevelIndex + 1);
+                    }
+                    break;
+            }
+        });
+
+        // --- Initial Load Function ---
+        async function initializeGame() {
+             statusElement.textContent = "Fetching levels...";
+             loadingMessageElement.style.display = 'block';
+             canvas.style.opacity = 0.5; // Dim canvas during initial fetch
+
+            try {
+                // Use a CORS proxy if necessary
+                const response = await fetch(LEVELS_URL);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status} fetching levels.`);
+                }
+                const text = await response.text();
+                const parsedData = parseSokobanText(text);
+
+                if (parsedData.levels.length === 0) {
+                     throw new Error("No valid levels found in the fetched data.");
+                }
+
+                levels = parsedData.levels; // Assign globally
+                levelMetadata = parsedData.metadata; // Assign globally
+
+                // Now that levels are loaded, load the first one
+                loadLevel(0);
+
+            } catch (error) {
+                console.error("Failed to load or parse levels:", error);
+                statusElement.textContent = "Error loading levels!";
+                levelInfoElement.textContent = "Could not fetch level data. Please check URL/CORS or try again.";
+                // Optionally load default fallback levels here:
+                // levels = [ ["#####", "#@$.#", "#####"] ]; levelMetadata = ["Fallback Level 1"]; loadLevel(0);
+            } finally {
+                 // Hide loading message in case loadLevel wasn't called on error
+                 // Although loadLevel itself handles this upon success/failure within its scope
+                 // We might need it here if fetch itself fails badly before loadLevel is attempted
+                  if (!isLoading) { // Only hide if loadLevel didn't start/finish
+                      loadingMessageElement.style.display = 'none';
+                      canvas.style.opacity = 1; // Ensure opacity reset if fetch failed early
+                  }
+
+            }
+        }
+
+        // --- Start the game ---
+        initializeGame();
+
+    </script>
+
+</body>
+</html>
