@@ -18,9 +18,21 @@
     :root {
       --bg-light: #f9fafb;
       --bg-dark: #1f2937;
+      --bg-darker: #19212c;
+      --bg-dark-light: #232e3d;
       --text-light: #1f2937;
       --text-dark: #f3f4f6;
     }
+
+    /*:root {
+      --bg-light: #f9fafb;
+      --bg-dark: #1f2937;
+      --bg-darker: #111827;
+      --bg-dark-light: #374151;
+      --text-light: #1f2937;
+      --text-dark: #f3f4f6;
+    }*/
+
     [data-theme="light"] {
       --bg: var(--bg-light);
       --text: var(--text-light);
@@ -48,6 +60,16 @@
       background-color: inherit;
       color: inherit;
     }
+    [data-theme="dark"] .bg-white {
+        background-color: var(--bg-darker);
+        color: var(--text-dark);
+    }
+
+    [data-theme="dark"] .bg-gray-100 {
+        background-color: var(--bg-dark-light);
+        color: var(--text-dark);
+    }
+
   </style>
 </head>
 <body data-theme="light" class="min-h-screen font-sans antialiased">
@@ -167,7 +189,7 @@
       "edit-title": "Edit title",
       "save-title": "Save",
       "cancel": "Cancel",
-      "confirm-recall": "You will loose your last state if you didn't save it prior. Do you want to continue?",
+      "confirm-recall": "You will lose your current work if you haven't saved it. Continue?",
       "confirm-delete": "Delete this saved state?",
       "confirm-reset-1": "You are going to delete all history and start fresh!",
       "confirm-reset-2": "Are you sure you want to delete all the data?",
@@ -203,7 +225,7 @@
       "save-title": "Sauvegarder",
       "cancel": "Annuler",
       "confirm-delete": "Supprimer cet état sauvegardé ?",
-      "confirm-recall": "Vous allez perdre votre dernier état s'il n'as pas été sauvé. Voulez vous continuer ?",
+      "confirm-recall": "Vous allez perdre votre travail actuel s'il n'est pas sauvegardé. Continuer ?",
       "confirm-reset-1": "Vous allez supprimer tout l'historique et repartir de zéro !",
       "confirm-reset-2": "Êtes-vous sûr de vouloir supprimer toutes les données ?",
       "reset-label": "Réinitialiser toutes les données",
