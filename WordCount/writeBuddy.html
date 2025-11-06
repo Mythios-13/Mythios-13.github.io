@@ -563,7 +563,6 @@
       const states = getSavedStates();
       const mode = getTextMode();
       const badges = new Set();
-
       let totalWords = 0;
       let dates = [];
 
@@ -616,7 +615,7 @@
     }
 
     // ========================================
-    // Timeline Chart (Cumulative or Stateful)
+    // Timeline Chart (Cumulative or Stateful) - Fixed
     // ========================================
     let chartInstance = null;
 
@@ -633,36 +632,36 @@
       let data = [];
       let labelKey = '';
 
-      let cumulativeFn = function(countFn){
-        let _data = [];
+      // Helper to compute cumulative or per-state values
+      const computeData = (countFn) => {
         if (mode === 'cumulative') {
-            let cumulative = 0;
-            const cumulativeValues = states.map(s => {
+          let cumulative = 0;
+          return states.map(s => {
             cumulative += countFn(s.text);
             return cumulative;
-            });
-            _data = cumulativeValues;
+          });
         } else {
-            _data = states.map(s => countFn(s.text));
+          return states.map(s => countFn(s.text));
         }
-        return _data;
       };
-      /*if (mode === 'cumulative') {
-        let cumulative = 0;
-        const cumulativeValues = states.map(s => {
-          cumulative += countWords(s.text);
-          return cumulative;
-        });
-        data = cumulativeValues;
-      } else {
-        data = states.map(s => countWords(s.text));
-      }*/
 
       switch (metric) {
-        case 'words': data = cumulativeFn(countWords); labelKey = 'word-count'; break;
-        case 'unique': data = cumulativeFn(countUniqueWords); labelKey = 'unique-words'; break;
-        case 'chars': data = cumulativeFn(countCharacters); labelKey = 'characters'; break;
-        case 'sentences': data = cumulativeFn(countSentences(s.text)); labelKey = 'sentences'; break;
+        case 'words':
+          data = computeData(countWords);
+          labelKey = 'word-count';
+          break;
+        case 'unique':
+          data = computeData(countUniqueWords);
+          labelKey = 'unique-words';
+          break;
+        case 'chars':
+          data = computeData(countCharacters);
+          labelKey = 'characters';
+          break;
+        case 'sentences':
+          data = computeData(countSentences);
+          labelKey = 'sentences';
+          break;
       }
 
       const labels = states.map(s => luxon.DateTime.fromMillis(s.timestamp).toFormat('MMM dd, HH:mm'));
