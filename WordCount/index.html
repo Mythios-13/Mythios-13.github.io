@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Writer's Word Tracker</title>
+
+  <!-- Tailwind CSS via CDN (MIT License) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Chart.js via CDN (MIT License) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Luxon for date handling (MIT License) -->
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+
+  <style>
+    :root {
+      --bg-light: #f9fafb;
+      --bg-dark: #1f2937;
+      --text-light: #1f2937;
+      --text-dark: #f3f4f6;
+    }
+    [data-theme="light"] {
+      --bg: var(--bg-light);
+      --text: var(--text-light);
+    }
+    [data-theme="dark"] {
+      --bg: var(--bg-dark);
+      --text: var(--text-dark);
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      transition: background-color 0.3s, color 0.3s;
+    }
+    .resize-y {
+      resize: vertical;
+    }
+    .history-item:hover {
+      background-color: rgba(156, 163, 175, 0.2);
+    }
+  </style>
+</head>
+<body data-theme="light" class="min-h-screen font-sans antialiased">
+
+  <div class="container mx-auto max-w-5xl p-4 md:p-6">
+
+    <!-- Header -->
+    <header class="flex justify-between items-center mb-8">
+      <h1 id="app-title" class="text-2xl md:text-3xl font-bold">Writer's Word Tracker</h1>
+      <div class="flex gap-2 items-center">
+        <select id="lang-select" class="px-3 py-1 rounded border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm">
+          <option value="en">EN</option>
+          <option value="fr">FR</option>
+        </select>
+        <button id="theme-toggle" class="p-2 rounded-full hover:bg-gray-300 dark:hover:bg-gray-700 transition">
+          <span class="sun hidden">Sun</span>
+          <span class="moon">Moon</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="grid md:grid-cols-3 gap-6">
+
+      <!-- Text Input -->
+      <section class="md:col-span-2 space-y-4">
+        <textarea id="text-input" class="w-full h-64 p-4 text-base rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Start writing..."></textarea>
+
+        <div class="flex gap-3">
+          <button id="save-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+            Save State
+          </button>
+          <button id="clear-btn" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition">
+            Clear
+          </button>
+        </div>
+
+        <!-- Live Stats -->
+        <div id="stats-container" class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+          <!-- Stats filled by JS -->
+        </div>
+
+        <!-- Badges Placeholder -->
+        <div class="mt-6 p-4 border border-dashed border-gray-400 dark:border-gray-600 rounded-lg">
+          <h3 id="badges-title" class="font-semibold mb-2">Badges</h3>
+          <div id="badges-list" class="flex flex-wrap gap-2 text-sm text-gray-500">
+            <span class="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded-full">+ First Draft</span>
+            <span class="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded-full">+ 10k Words</span>
+            <!-- Placeholder badges -->
+          </div>
+        </div>
+      </section>
+
+      <!-- History & Chart -->
+      <aside class="space-y-6">
+        <!-- History -->
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+          <h2 id="history-title" class="font-semibold mb-3">History</h2>
+          <div id="history-list" class="space-y-2 max-h-64 overflow-y-auto text-sm">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+
+        <!-- Timeline Chart -->
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+          <h2 id="chart-title" class="font-semibold mb-3">Progress Over Time</h2>
+          <canvas id="timeline-chart"></canvas>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+
+  <!-- Localization JSON -->
+  <script type="text/json" id="i18n-data">
+  {
+    "en": {
+      "app-title": "Writer's Word Tracker",
+      "start-writing": "Start writing...",
+      "save-state": "Save State",
+      "clear": "Clear",
+      "word-count": "Words",
+      "unique-words": "Unique Words",
+      "characters": "Characters",
+      "more-stats": "More stats coming...",
+      "badges-title": "Badges",
+      "history-title": "History",
+      "chart-title": "Progress Over Time",
+      "no-history": "No saved states yet.",
+      "saved-at": "Saved at {time}",
+      "recall": "Recall",
+      "delete": "Delete",
+      "edit-title": "Edit title",
+      "save-title": "Save",
+      "cancel": "Cancel"
+    },
+    "fr": {
+      "app-title": "Compteur de Mots pour Écrivains",
+      "start-writing": "Commencez à écrire...",
+      "save-state": "Sauvegarder",
+      "clear": "Effacer",
+      "word-count": "Mots",
+      "unique-words": "Mots uniques",
+      "characters": "Caractères",
+      "more-stats": "Plus de stats bientôt...",
+      "badges-title": "Badges",
+      "history-title": "Historique",
+      "chart-title": "Progression dans le temps",
+      "no-history": "Aucun état sauvegardé.",
+      "saved-at": "Sauvegardé à {time}",
+      "recall": "Rappeler",
+      "delete": "Supprimer",
+      "edit-title": "Modifier le titre",
+      "save-title": "Sauvegarder",
+      "cancel": "Annuler"
+    }
+  }
+  </script>
+
+  <script>
+    // ========================================
+    // Localization System
+    // ========================================
+    const i18nData = JSON.parse(document.getElementById('i18n-data').textContent);
+    let currentLang = localStorage.getItem('lang') || 'en';
+
+    function t(key, params = {}) {
+      let str = i18nData[currentLang][key] || i18nData['en'][key] || key;
+      return Object.entries(params).reduce((s, [k, v]) => s.replace(`{${k}}`, v), str);
+    }
+
+    function updateUI() {
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.dataset.i18n;
+        el.textContent = t(key);
+      });
+      document.getElementById('text-input').placeholder = t('start-writing');
+      document.getElementById('save-btn').textContent = t('save-state');
+      document.getElementById('clear-btn').textContent = t('clear');
+    }
+
+    // ========================================
+    // Theme Toggle
+    // ========================================
+    const themeToggle = document.getElementById('theme-toggle');
+    const body = document.body;
+    const sun = themeToggle.querySelector('.sun');
+    const moon = themeToggle.querySelector('.moon');
+
+    function setTheme(theme) {
+      body.dataset.theme = theme;
+      localStorage.setItem('theme', theme);
+      sun.classList.toggle('hidden', theme === 'dark');
+      moon.classList.toggle('hidden', theme === 'light');
+    }
+
+    themeToggle.addEventListener('click', () => {
+      const newTheme = body.dataset.theme === 'dark' ? 'light' : 'dark';
+      setTheme(newTheme);
+    });
+
+    // Init theme
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    setTheme(savedTheme);
+
+    // ========================================
+    // Language Selector
+    // ========================================
+    const langSelect = document.getElementById('lang-select');
+    langSelect.value = currentLang;
+    langSelect.addEventListener('change', (e) => {
+      currentLang = e.target.value;
+      localStorage.setItem('lang', currentLang);
+      updateUI();
+      renderHistory();
+      renderChart();
+    });
+
+    // ========================================
+    // Core: Text Analysis (supports EN/FR)
+    // ========================================
+    function countWords(text) {
+      if (!text.trim()) return 0;
+      // Robust word counting: handles French contractions, punctuation
+      return text
+        .replace(/['’](\w)/g, '$1') // remove apostrophes in contractions
+        .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ')
+        .trim()
+        .split(/\s+/)
+        .filter(w => w.length > 0).length;
+    }
+
+    function countUniqueWords(text) {
+      if (!text.trim()) return 0;
+      const words = text
+        .toLowerCase()
+        .replace(/['’](\w)/g, '$1')
+        .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      return new Set(words).size;
+    }
+
+    function countCharacters(text) {
+      return text.length;
+    }
+
+    // Placeholder for future stats
+    function getExtraStats(text) {
+      return {
+        // avgWordLength: ...
+        // readingTime: ...
+        // sentiment: ...
+      };
+    }
+
+    // ========================================
+    // Local Storage: State Management
+    // ========================================
+    const STORAGE_KEY = 'writer-tracker-states';
+    const LAST_STATE_KEY = 'writer-tracker-last';
+
+    function saveLastState() {
+      const state = {
+        text: textInput.value,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(LAST_STATE_KEY, JSON.stringify(state));
+    }
+
+    function loadLastState() {
+      const raw = localStorage.getItem(LAST_STATE_KEY);
+      if (raw) {
+        const state = JSON.parse(raw);
+        textInput.value = state.text || '';
+      }
+    }
+
+    function getSavedStates() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }
+
+    function saveState(title = '') {
+      const states = getSavedStates();
+      const newState = {
+        id: Date.now() + Math.random(),
+        text: textInput.value,
+        title: title.trim() || t('saved-at', { time: formatTime(Date.now()) }),
+        timestamp: Date.now()
+      };
+      states.push(newState);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(states));
+      saveLastState(); // always keep last
+      renderHistory();
+      renderChart();
+    }
+
+    function deleteState(id) {
+      let states = getSavedStates();
+      states = states.filter(s => s.id !== id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(states));
+      renderHistory();
+      renderChart();
+    }
+
+    function recallState(state) {
+      textInput.value = state.text;
+      updateStats();
+      saveLastState();
+    }
+
+    // ========================================
+    // UI: Stats, History, Chart
+    // ========================================
+    const textInput = document.getElementById('text-input');
+    const statsContainer = document.getElementById('stats-container');
+    const historyList = document.getElementById('history-list');
+    const saveBtn = document.getElementById('save-btn');
+    const clearBtn = document.getElementById('clear-btn');
+
+    function updateStats() {
+      const text = textInput.value;
+      const stats = [
+        { label: 'word-count', value: countWords(text) },
+        { label: 'unique-words', value: countUniqueWords(text) },
+        { label: 'characters', value: countCharacters(text) },
+        { label: 'more-stats', value: '...' }
+      ];
+
+      statsContainer.innerHTML = stats.map(s => `
+        <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg text-center">
+          <div class="text-2xl font-bold">${s.value}</div>
+          <div class="text-xs text-gray-600 dark:text-gray-400">${t(s.label)}</div>
+        </div>
+      `).join('');
+    }
+
+    function formatTime(ts) {
+      const dt = luxon.DateTime.fromMillis(ts);
+      return dt.setLocale(currentLang).toLocaleString(luxon.DateTime.DATETIME_MED);
+    }
+
+    function renderHistory() {
+      const states = getSavedStates().sort((a, b) => b.timestamp - a.timestamp);
+      if (states.length === 0) {
+        historyList.innerHTML = `<p class="text-sm text-gray-500">${t('no-history')}</p>`;
+        return;
+      }
+
+      historyList.innerHTML = states.map(state => `
+        <div class="history-item p-2 rounded flex justify-between items-center text-xs">
+          <div>
+            <div class="font-medium truncate max-w-32" title="${state.title}">${state.title}</div>
+            <div class="text-gray-500">${formatTime(state.timestamp)}</div>
+          </div>
+          <div class="flex gap-1">
+            <button class="recall-btn text-blue-600 hover:underline" data-id="${state.id}">${t('recall')}</button>
+            <button class="delete-btn text-red-600 hover:underline" data-id="${state.id}">${t('delete')}</button>
+          </div>
+        </div>
+      `).join('');
+
+      // Attach event listeners
+      document.querySelectorAll('.recall-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const state = states.find(s => s.id == btn.dataset.id);
+          if (state) recallState(state);
+        });
+      });
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          deleteState(btn.dataset.id);
+        });
+      });
+    }
+
+    // ========================================
+    // Timeline Chart
+    // ========================================
+    let chartInstance = null;
+
+    function renderChart() {
+      const states = getSavedStates().sort((a, b) => a.timestamp - b.timestamp);
+      if (states.length === 0) {
+        if (chartInstance) chartInstance.destroy();
+        return;
+      }
+
+      const labels = states.map(s => luxon.DateTime.fromMillis(s.timestamp).toFormat('MMM dd, HH:mm'));
+      const wordData = states.map(s => countWords(s.text));
+
+      const ctx = document.getElementById('timeline-chart').getContext('2d');
+
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: t('word-count'),
+            data: wordData,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: (items) => {
+                  const idx = items[0].dataIndex;
+                  return states[idx].title;
+                }
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { maxTicksLimit: 8 } },
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    // ========================================
+    // Event Listeners
+    // ========================================
+    textInput.addEventListener('input', () => {
+      updateStats();
+      saveLastState(); // auto-save last state
+    });
+
+    saveBtn.addEventListener('click', () => {
+      const title = prompt(t('edit-title'), '');
+      saveState(title || undefined);
+    });
+
+    clearBtn.addEventListener('click', () => {
+      if (confirm('Clear current text?')) {
+        textInput.value = '';
+        updateStats();
+        saveLastState();
+      }
+    });
+
+    // ========================================
+    // Init
+    // ========================================
+    function init() {
+      loadLastState();
+      updateStats();
+      renderHistory();
+      renderChart();
+      updateUI();
+
+      // Mark i18n elements
+      document.querySelectorAll('[id]').forEach(el => {
+        const key = el.id.replace(/-/g, '_');
+        if (i18nData['en'][key]) el.dataset.i18n = key;
+      });
+      updateUI();
+    }
+
+    init();
+  </script>
+</body>
+</html>
