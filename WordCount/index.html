@@ -40,11 +40,19 @@
     .history-item:hover {
       background-color: rgba(156, 163, 175, 0.2);
     }
+    .max-h-10-items {
+      max-height: calc(2.5rem * 10 + 1rem);
+    }
+    /* Fix textarea dark mode */
+    textarea {
+      background-color: inherit;
+      color: inherit;
+    }
   </style>
 </head>
 <body data-theme="light" class="min-h-screen font-sans antialiased">
 
-  <div class="container mx-auto max-w-5xl p-4 md:p-6">
+  <div class="container mx-auto max-w-7xl p-4 md:p-6">
 
     <!-- Header -->
     <header class="flex justify-between items-center mb-8">
@@ -61,10 +69,12 @@
       </div>
     </header>
 
-    <div class="grid md:grid-cols-3 gap-6">
+    <div class="grid lg:grid-cols-3 gap-6">
 
-      <!-- Text Input -->
-      <section class="md:col-span-2 space-y-4">
+      <!-- Text Input + Stats + Chart -->
+      <section class="lg:col-span-2 space-y-6">
+
+        <!-- Text Input -->
         <textarea id="text-input" class="w-full h-64 p-4 text-base rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Start writing..."></textarea>
 
@@ -78,39 +88,59 @@
         </div>
 
         <!-- Live Stats -->
-        <div id="stats-container" class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-          <!-- Stats filled by JS -->
+        <div id="stats-container" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <!-- Filled by JS -->
         </div>
 
-        <!-- Badges Placeholder -->
-        <div class="mt-6 p-4 border border-dashed border-gray-400 dark:border-gray-600 rounded-lg">
-          <h3 id="badges-title" class="font-semibold mb-2">Badges</h3>
-          <div id="badges-list" class="flex flex-wrap gap-2 text-sm text-gray-500">
-            <span class="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded-full">+ First Draft</span>
-            <span class="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded-full">+ 10k Words</span>
-            <!-- Placeholder badges -->
+        <!-- Chart -->
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+          <div class="flex justify-between items-center mb-3">
+            <h2 id="chart-title" class="font-semibold">Progress Over Time</h2>
+            <select id="chart-metric" class="text-sm px-3 py-1 rounded border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-800">
+              <option value="words">Words</option>
+              <option value="unique">Unique Words</option>
+              <option value="chars">Characters</option>
+              <option value="sentences">Sentences (approx)</option>
+            </select>
           </div>
+          <canvas id="timeline-chart"></canvas>
         </div>
+
       </section>
 
-      <!-- History & Chart -->
+      <!-- Right Column: History + Badges -->
       <aside class="space-y-6">
+
         <!-- History -->
         <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
           <h2 id="history-title" class="font-semibold mb-3">History</h2>
-          <div id="history-list" class="space-y-2 max-h-64 overflow-y-auto text-sm">
+          <div id="history-list" class="space-y-2 max-h-10-items overflow-y-auto text-sm">
             <!-- Filled by JS -->
           </div>
         </div>
 
-        <!-- Timeline Chart -->
+        <!-- Badges -->
         <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-          <h2 id="chart-title" class="font-semibold mb-3">Progress Over Time</h2>
-          <canvas id="timeline-chart"></canvas>
+          <h3 id="badges-title" class="font-semibold mb-3">Badges</h3>
+          <div id="badges-list" class="flex flex-wrap gap-2 text-sm">
+            <!-- Filled by JS -->
+          </div>
         </div>
+
       </aside>
 
     </div>
+
+    <!-- Reset Button -->
+    <footer class="mt-12 text-center">
+      <button id="reset-btn" class="inline-flex items-center gap-2 px-4 py-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+        <span id="reset-label">Reset All Data</span>
+      </button>
+    </footer>
+
   </div>
 
   <!-- Localization JSON -->
@@ -124,17 +154,32 @@
       "word-count": "Words",
       "unique-words": "Unique Words",
       "characters": "Characters",
+      "sentences": "Sentences (approx)",
       "more-stats": "More stats coming...",
       "badges-title": "Badges",
       "history-title": "History",
       "chart-title": "Progress Over Time",
       "no-history": "No saved states yet.",
+      "no-badges": "No badges yet. Keep writing!",
       "saved-at": "Saved at {time}",
       "recall": "Recall",
       "delete": "Delete",
       "edit-title": "Edit title",
       "save-title": "Save",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "confirm-recall": "You will loose your last state if you didn't save it prior. Do you want to continue?",
+      "confirm-delete": "Delete this saved state?",
+      "confirm-reset-1": "You are going to delete all history and start fresh!",
+      "confirm-reset-2": "Are you sure you want to delete all the data?",
+      "reset-label": "Reset All Data",
+      "words": "Words",
+      "unique": "Unique Words",
+      "chars": "Characters",
+      "sentences": "Sentences (approx)",
+      "badge-1k": "1k Words",
+      "badge-15k": "15k Words",
+      "badge-50k": "50k Champion",
+      "badge-streak": "{n} Day Streak"
     },
     "fr": {
       "app-title": "Compteur de Mots pour Écrivains",
@@ -144,17 +189,32 @@
       "word-count": "Mots",
       "unique-words": "Mots uniques",
       "characters": "Caractères",
+      "sentences": "Phrases (approx)",
       "more-stats": "Plus de stats bientôt...",
       "badges-title": "Badges",
       "history-title": "Historique",
       "chart-title": "Progression dans le temps",
       "no-history": "Aucun état sauvegardé.",
+      "no-badges": "Aucun badge. Continuez à écrire !",
       "saved-at": "Sauvegardé à {time}",
       "recall": "Rappeler",
       "delete": "Supprimer",
       "edit-title": "Modifier le titre",
       "save-title": "Sauvegarder",
-      "cancel": "Annuler"
+      "cancel": "Annuler",
+      "confirm-delete": "Supprimer cet état sauvegardé ?",
+      "confirm-recall": "Vous allez perdre votre dernier état s'il n'as pas été sauvé. Voulez vous continuer ?",
+      "confirm-reset-1": "Vous allez supprimer tout l'historique et repartir de zéro !",
+      "confirm-reset-2": "Êtes-vous sûr de vouloir supprimer toutes les données ?",
+      "reset-label": "Réinitialiser toutes les données",
+      "words": "Mots",
+      "unique": "Mots uniques",
+      "chars": "Caractères",
+      "sentences": "Phrases (approx)",
+      "badge-1k": "1k Mots",
+      "badge-15k": "15k Mots",
+      "badge-50k": "Champion 50k",
+      "badge-streak": "{n} jours consécutifs"
     }
   }
   </script>
@@ -179,6 +239,10 @@
       document.getElementById('text-input').placeholder = t('start-writing');
       document.getElementById('save-btn').textContent = t('save-state');
       document.getElementById('clear-btn').textContent = t('clear');
+      document.getElementById('chart-metric').querySelectorAll('option').forEach(opt => {
+        opt.textContent = t(opt.value);
+      });
+      document.getElementById('reset-label').textContent = t('reset-label');
     }
 
     // ========================================
@@ -194,6 +258,9 @@
       localStorage.setItem('theme', theme);
       sun.classList.toggle('hidden', theme === 'dark');
       moon.classList.toggle('hidden', theme === 'light');
+      // Force textarea to inherit colors
+      document.getElementById('text-input').style.backgroundColor = 'inherit';
+      document.getElementById('text-input').style.color = 'inherit';
     }
 
     themeToggle.addEventListener('click', () => {
@@ -201,7 +268,6 @@
       setTheme(newTheme);
     });
 
-    // Init theme
     const savedTheme = localStorage.getItem('theme') || 'light';
     setTheme(savedTheme);
 
@@ -216,16 +282,16 @@
       updateUI();
       renderHistory();
       renderChart();
+      renderBadges();
     });
 
     // ========================================
-    // Core: Text Analysis (supports EN/FR)
+    // Text Analysis
     // ========================================
     function countWords(text) {
       if (!text.trim()) return 0;
-      // Robust word counting: handles French contractions, punctuation
       return text
-        .replace(/['’](\w)/g, '$1') // remove apostrophes in contractions
+        .replace(/['’](\w)/g, '$1')
         .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ')
         .trim()
         .split(/\s+/)
@@ -248,17 +314,14 @@
       return text.length;
     }
 
-    // Placeholder for future stats
-    function getExtraStats(text) {
-      return {
-        // avgWordLength: ...
-        // readingTime: ...
-        // sentiment: ...
-      };
+    function countSentences(text) {
+      if (!text.trim()) return 0;
+      const matches = text.match(/[.!?]+/g);
+      return matches ? matches.length : 0;
     }
 
     // ========================================
-    // Local Storage: State Management
+    // Local Storage
     // ========================================
     const STORAGE_KEY = 'writer-tracker-states';
     const LAST_STATE_KEY = 'writer-tracker-last';
@@ -287,40 +350,61 @@
     function saveState(title = '') {
       const states = getSavedStates();
       const newState = {
-        id: Date.now() + Math.random(),
+        id: Date.now() + "-" + Math.floor(Math.random() * 100), // String ID
         text: textInput.value,
         title: title.trim() || t('saved-at', { time: formatTime(Date.now()) }),
         timestamp: Date.now()
       };
       states.push(newState);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(states));
-      saveLastState(); // always keep last
+      saveLastState();
       renderHistory();
       renderChart();
+      renderBadges();
     }
 
     function deleteState(id) {
+      if (!confirm(t('confirm-delete'))) return;
       let states = getSavedStates();
       states = states.filter(s => s.id !== id);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(states));
       renderHistory();
       renderChart();
+      renderBadges();
     }
 
     function recallState(state) {
+      if (!confirm(t('confirm-recall'))) return;
       textInput.value = state.text;
       updateStats();
       saveLastState();
     }
 
     // ========================================
-    // UI: Stats, History, Chart
+    // Reset All Data
+    // ========================================
+    const resetBtn = document.getElementById('reset-btn');
+    resetBtn.addEventListener('click', () => {
+      if (!confirm(t('confirm-reset-1'))) return;
+      if (!confirm(t('confirm-reset-2'))) return;
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(LAST_STATE_KEY);
+      textInput.value = '';
+      updateStats();
+      renderHistory();
+      renderChart();
+      renderBadges();
+    });
+
+    // ========================================
+    // Stats & Badges
     // ========================================
     const textInput = document.getElementById('text-input');
     const statsContainer = document.getElementById('stats-container');
     const historyList = document.getElementById('history-list');
     const saveBtn = document.getElementById('save-btn');
     const clearBtn = document.getElementById('clear-btn');
+    const chartMetric = document.getElementById('chart-metric');
 
     function updateStats() {
       const text = textInput.value;
@@ -328,7 +412,7 @@
         { label: 'word-count', value: countWords(text) },
         { label: 'unique-words', value: countUniqueWords(text) },
         { label: 'characters', value: countCharacters(text) },
-        { label: 'more-stats', value: '...' }
+        { label: 'sentences', value: countSentences(text) }
       ];
 
       statsContainer.innerHTML = stats.map(s => `
@@ -364,18 +448,63 @@
         </div>
       `).join('');
 
-      // Attach event listeners
       document.querySelectorAll('.recall-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const state = states.find(s => s.id == btn.dataset.id);
+        btn.onclick = () => {
+          const state = states.find(s => s.id === btn.dataset.id);
           if (state) recallState(state);
-        });
+        };
       });
       document.querySelectorAll('.delete-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.onclick = () => {
           deleteState(btn.dataset.id);
-        });
+        };
       });
+    }
+
+    // ========================================
+    // Badges System
+    // ========================================
+    function renderBadges() {
+      const states = getSavedStates();
+      const badges = new Set();
+
+      const totalWords = states.reduce((sum, s) => sum + countWords(s.text), 0);
+      if (totalWords >= 1000) badges.add('1k');
+      if (totalWords >= 15000) badges.add('15k');
+      if (totalWords >= 50000) badges.add('50k');
+
+      const dates = [...new Set(states.map(s => luxon.DateTime.fromMillis(s.timestamp).startOf('day').toMillis()))].sort();
+      let streak = 0;
+      let current = null;
+      for (let i = dates.length - 1; i >= 0; i--) {
+        const dt = luxon.DateTime.fromMillis(dates[i]);
+        if (!current || current.diff(dt, 'days').days <= 1) {
+          streak++;
+          current = dt;
+        } else break;
+      }
+      if (streak >= 2) badges.add(`streak-${streak}`);
+
+      const badgeList = document.getElementById('badges-list');
+      if (badges.size === 0) {
+        badgeList.innerHTML = `<span class="text-gray-500 text-sm">${t('no-badges')}</span>`;
+        return;
+      }
+
+      badgeList.innerHTML = Array.from(badges).map(b => {
+        let label = '';
+        if (b === '1k') label = t('badge-1k');
+        else if (b === '15k') label = t('badge-15k');
+        else if (b === '50k') label = t('badge-50k');
+        else if (b.startsWith('streak-')) {
+          const n = b.split('-')[1];
+          label = t('badge-streak', { n });
+        }
+        const color = b === '50k' ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white' :
+                      b.startsWith('streak') ? 'bg-green-600 text-white' :
+                      'bg-blue-600 text-white';
+        return `<span class="px-3 py-1 ${color} rounded-full text-xs font-medium">${label}</span>`;
+      }).join('');
     }
 
     // ========================================
@@ -390,11 +519,20 @@
         return;
       }
 
+      const metric = chartMetric.value;
+      let data = [];
+      let labelKey = '';
+
+      switch (metric) {
+        case 'words': data = states.map(s => countWords(s.text)); labelKey = 'word-count'; break;
+        case 'unique': data = states.map(s => countUniqueWords(s.text)); labelKey = 'unique-words'; break;
+        case 'chars': data = states.map(s => countCharacters(s.text)); labelKey = 'characters'; break;
+        case 'sentences': data = states.map(s => countSentences(s.text)); labelKey = 'sentences'; break;
+      }
+
       const labels = states.map(s => luxon.DateTime.fromMillis(s.timestamp).toFormat('MMM dd, HH:mm'));
-      const wordData = states.map(s => countWords(s.text));
 
       const ctx = document.getElementById('timeline-chart').getContext('2d');
-
       if (chartInstance) chartInstance.destroy();
 
       chartInstance = new Chart(ctx, {
@@ -402,8 +540,8 @@
         data: {
           labels,
           datasets: [{
-            label: t('word-count'),
-            data: wordData,
+            label: t(labelKey),
+            data,
             borderColor: '#3b82f6',
             backgroundColor: 'rgba(59, 130, 246, 0.1)',
             fill: true,
@@ -417,10 +555,7 @@
             legend: { display: false },
             tooltip: {
               callbacks: {
-                title: (items) => {
-                  const idx = items[0].dataIndex;
-                  return states[idx].title;
-                }
+                title: (items) => states[items[0].dataIndex].title
               }
             }
           },
@@ -437,7 +572,7 @@
     // ========================================
     textInput.addEventListener('input', () => {
       updateStats();
-      saveLastState(); // auto-save last state
+      saveLastState();
     });
 
     saveBtn.addEventListener('click', () => {
@@ -446,12 +581,14 @@
     });
 
     clearBtn.addEventListener('click', () => {
-      if (confirm('Clear current text?')) {
+      if (confirm(t('clear') + ' current text?')) {
         textInput.value = '';
         updateStats();
         saveLastState();
       }
     });
+
+    chartMetric.addEventListener('change', renderChart);
 
     // ========================================
     // Init
@@ -461,9 +598,9 @@
       updateStats();
       renderHistory();
       renderChart();
+      renderBadges();
       updateUI();
 
-      // Mark i18n elements
       document.querySelectorAll('[id]').forEach(el => {
         const key = el.id.replace(/-/g, '_');
         if (i18nData['en'][key]) el.dataset.i18n = key;
