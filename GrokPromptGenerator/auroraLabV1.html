@@ -142,7 +142,7 @@
 <body>
 
   <header>
-    <div class="logo">Aurora Lab v2</div>
+    <div class="logo">Aurora Lab v1</div>
     <div class="word-count" id="wordCount">0 words</div>
     <div class="menu-btn" id="menuBtn"><span></span></div>
   </header>
@@ -498,6 +498,7 @@ $("#copyBtn").addEventListener("click", () => {
 $("#sendBtn").addEventListener("click", () => {
   const prompt = $("#finalPrompt").value.trim();
   if (!prompt) return;
+  savePromptToHistory();
 
   const text = encodeURIComponent(prompt);
 
