@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Aurora Lab v2</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#58a6ff">
+  <meta name="description" content="Ultimate Aurora/Grok Imagine prompt generator"/>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Aurora Lab">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230586ff'/%3E%3Ctext y='70' x='50' font-size='60' text-anchor='middle' fill='white'%3E✦%3C/text%3E%3C/svg%3E">
+  
+  <!-- Web App Manifest (embedded – no external file needed) -->
+  <link rel="manifest" href="data:application/manifest+json,{
+    %22name%22:%22Aurora Lab%22,
+    %22short_name%22:%22Aurora%22,
+    %22description%22:%22Ultimate Aurora/Grok Imagine prompt generator%22,
+    %22start_url%22:%22.%22,
+    %22display%22:%22standalone%22,
+    %22background_color%22:%22%230d1117%22,
+    %22theme_color%22:%22%2358a6ff%22,
+    %22orientation%22:%22portrait-primary%22,
+    %22icons%22:[{
+      %22src%22:%22data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230586ff'/%3E%3Ctext y='70' x='50' font-size='60' text-anchor='middle' fill='white'%3E✦%3C/text%3E%3C/svg%3E%22,
+      %22sizes%22:%22192x192%22,
+      %22type%22:%22image/svg+xml%22,
+      %22purpose%22:%22any maskable%22
+    }]
+  }">
+  
+  <!-- PWA install banner will appear automatically thanks to the beforeinstallprompt listener already in your JS -->
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --primary: #58a6ff; --text: #f0f6fc; --text-dim: #8b949e; --border: #30363d; --danger: #f85149;
+    }
+    [data-theme="light"] {
+      --bg: #ffffff; --surface: #f6f8fa; --primary: #0969da; --text: #1f2328; --text-dim: #656d76; --border: #d0d7de; --danger: #cf222e;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100dvh;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      padding-bottom: 90px; overflow-x: hidden; transition: background .3s, color .3s;
+    }
+    header {
+      position: fixed; top: 0; left: 0; right: 0; height: 56px; background: var(--surface);
+      border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; z-index: 1000;
+    }
+    .logo { font-weight: 800; font-size: 18px; }
+    .word-count { position: absolute; left: 50%; transform: translateX(-50%); font-size: 14px; color: var(--text-dim); font-weight: 500; }
+    .menu-btn { width: 44px; height: 44px; cursor: pointer; position: relative; }
+    .menu-btn span, .menu-btn span::before, .menu-btn span::after {
+      display: block; width: 24px; height: 2px; background: var(--text); position: absolute; left: 10px; top: 21px; transition: .3s;
+    }
+    .menu-btn span::before { content:''; top:-8px; }
+    .menu-btn span::after { content:''; top:8px; }
+
+    #editorPage { padding: 70px 16px 20px; }
+    .page { display: none; }
+    .page.active { display: block; animation: fadeIn .3s; }
+    @keyframes fadeIn { from {opacity:0;} to {opacity:1;} }
+
+    .technique-tabs {
+      display: flex; overflow-x: auto; gap: 8px; margin-bottom: 20px; padding-bottom: 8px;
+      scrollbar-width: none;
+    }
+    .technique-tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      padding: 10px 16px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; white-space: nowrap; font-size: 14px; cursor: pointer; transition: .2s;
+    }
+    .tab.active { background: var(--primary); color: #000; font-weight: 600; }
+
+    .section { display: none; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .section.active { display: block; }
+
+    label { display: block; margin: 16px 0 8px; font-size: 14px; color: var(--text-dim); }
+    textarea, input[type=text] {
+      width: 100%; background: #010409; border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; color: var(--text); font-family: inherit; font-size: 15px; resize: vertical; min-height: 80px;
+    }
+    [data-theme="light"] textarea, [data-theme="light"] input { background: #ffffff; color: #1f2328; }
+
+    #finalPrompt { background: #010409; min-height: 130px; font-family: 'SF Mono', monospace; font-size: 14px; white-space: pre-wrap; }
+    [data-theme="light"] #finalPrompt { background: #ffffff; color: #1f2328; }
+
+    .fab { position: fixed; right: 20px; bottom: 80px; width: 56px; height: 56px;
+      background: var(--primary); color: #000; border-radius: 50%; display: flex;
+      align-items: center; justify-content: center; font-size: 28px; box-shadow: 0 4px 20px rgba(88,166,255,0.5);
+      z-index: 999; cursor: pointer;
+    }
+    .fab2 { right: 86px; background: #28a745; }
+
+    .style-presets {
+      display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0;
+    }
+    .preset-btn {
+      padding: 6px 12px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; font-size: 13px; cursor: pointer;
+    }
+    .preset-btn.active { background: var(--primary); color: #000; }
+
+    .dynamic-row {
+      display: flex; gap: 8px; align-items: flex-start; margin-bottom: 12px;
+    }
+    .dynamic-row input:first-child { width: 130px; flex-shrink: 0; min-height: 48px; }
+    .dynamic-row textarea { flex: 1; }
+    .remove-row { color: var(--danger); font-size: 24px; cursor: pointer; width: 40px; text-align: center; }
+
+    .saved-tabs { display: flex; gap: 12px; margin: 0 16px 16px; }
+    .saved-tab { padding: 8px 16px; border-bottom: 2px solid transparent; cursor: pointer; }
+    .saved-tab.active { border-color: var(--primary); font-weight: 600; }
+
+    #searchSaved { width: calc(100% - 32px); padding: 0 12px; margin: 120px 16px 16px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); }
+
+    .history-item { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 12px; cursor: pointer; transition: .2s; }
+    .history-item:hover { border-color: var(--primary); }
+    .history-preview { font-weight: 600; margin-bottom: 6px; word-break: break-word; }
+    .history-meta { font-size: 12px; color: var(--text-dim); }
+
+    .back-btn { position: fixed; top: 70px; left: 16px; background: var(--surface); padding: 8px 12px; border-radius: 8px; font-size: 14px; z-index: 900; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+
+    .pwa-banner { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 16px; text-align: center; z-index: 1000; display: none; }
+    .pwa-banner button { background: var(--primary); color: #000; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; margin: 0 8px; }
+
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); opacity: 0; visibility: hidden; transition: .3s; z-index: 1100; }
+    .overlay.active { opacity:1; visibility:visible; }
+    .sidebar { position: fixed; top: 0; left: -300px; width: 280px; height: 100dvh; background: var(--surface); padding: 70px 20px 20px; transition: .3s; z-index: 1200; border-right: 1px solid var(--border); }
+    .sidebar.active { left: 0; }
+    .menu-item { padding: 16px; border-radius: 8px; cursor: pointer; margin-bottom: 8px; font-size: 15px; }
+    .menu-item:hover { background: rgba(88,166,255,0.2); }
+
+    .clear-btn { color: var(--danger); text-align: center; margin-top: 20px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">Aurora Lab v2</div>
+    <div class="word-count" id="wordCount">0 words</div>
+    <div class="menu-btn" id="menuBtn"><span></span></div>
+  </header>
+
+  <!-- Editor Page -->
+  <div id="editorPage" class="page active">
+    <div class="technique-tabs">
+      <div class="tab active" data-tech="basic">Basic</div>
+      <div class="tab" data-tech="hierarchical">Hierarchical</div>
+      <div class="tab" data-tech="scanline">Scanline</div>
+      <div class="tab" data-tech="text">Text/Logo</div>
+      <div class="tab" data-tech="master">Master Code</div>
+    </div>
+
+    <!-- BASIC -->
+    <div id="basic" class="section active">
+      <label>Subject (first!)</label>
+      <textarea id="basic-subject" placeholder="A cyberpunk fox hacker..."></textarea>
+      <label>Action / State</label>
+      <textarea id="basic-action" placeholder="sitting at a holographic terminal"></textarea>
+      <label>Style & Lighting</label>
+      <textarea id="basic-style" placeholder="volumetric neon lighting, cinematic, 8k"></textarea>
+    </div>
+
+    <!-- HIERARCHICAL -->
+    <div id="hierarchical" class="section">
+      <label>Camera & Framing</label>
+      <input type="text" id="hier-camera" placeholder="Wide shot, low angle"/>
+      <label>Foreground</label>
+      <textarea id="hier-fg" placeholder="A glowing campfire with sparks"></textarea>
+      <label>Midground</label>
+      <textarea id="hier-mg" placeholder="Two astronauts laughing"></textarea>
+      <label>Background</label>
+      <textarea id="hier-bg" placeholder="Mars landscape under starry sky"></textarea>
+      <label>Atmosphere</label>
+      <textarea id="hier-atmo" placeholder="cold, cozy, cinematic rim lighting"></textarea>
+    </div>
+
+    <!-- SCANLINE -->
+    <div id="scanline" class="section">
+      <label>[Global Setting]</label>
+      <textarea id="scan-setting" placeholder="Night time, heavy rain, neon-lit cyberpunk Tokyo street"></textarea>
+      <label>[Atmosphere & Lighting]</label>
+      <textarea id="scan-light" placeholder="volumetric god rays, reflections on wet pavement"></textarea>
+      <label>[Left Side]</label>
+      <textarea id="scan-left" placeholder="Female cybernetic ninja in matte black armor"></textarea>
+      <label>[Right Side]</label>
+      <textarea id="scan-right" placeholder="Giant yellow mech swinging wrench, motion blur"></textarea>
+      <label>[Camera]</label>
+      <input type="text" id="scan-camera" placeholder="Low dramatic angle, wide shot, 2.35:1"/>
+    </div>
+
+    <!-- TEXT/LOGO -->
+    <div id="text" class="section">
+      <label>Container / Medium</label>
+      <textarea id="text-medium" placeholder="A sleek black metal sign on concrete wall"></textarea>
+      <label>Exact Text (in quotes)</label>
+      <textarea id="text-exact" placeholder="NEON DREAMS"></textarea>
+      <label>Font & Style</label>
+      <textarea id="text-style" placeholder="buzzing hot pink neon tubes, elegant"></textarea>
+      <label>Extra Precision</label>
+      <textarea id="text-extra" placeholder="Text must be perfectly legible and exactly as written"></textarea>
+    </div>
+
+    <!-- MASTER PSEUDO-CODE -->
+    <div id="master" class="section">
+      <div id="dynamicRows"></div>
+      <button type="button" id="addRow" style="margin-top:12px;padding:8px 16px;background:var(--primary);color:#000;border:none;border-radius:8px;">+ Add Section</button>
+    </div>
+
+    <div class="style-presets">
+      <div class="preset-btn" data-style="Photorealistic, 8k, ultra detailed, sharp focus, cinematic lighting">Photoreal</div>
+      <div class="preset-btn" data-style="1980s anime, cel-shaded, vibrant colors, detailed background">Anime</div>
+      <div class="preset-btn" data-style="oil painting, thick impasto brushstrokes, dramatic lighting">Oil Painting</div>
+      <div class="preset-btn" data-style="flat vector art, minimal, bold colors, clean lines">Vector</div>
+      <div class="preset-btn" data-style="cinematic, anamorphic lens, film grain, dramatic">Cinematic</div>
+      <div class="preset-btn" data-style="minimalist, white space, clean typography">Minimal</div>
+    </div>
+
+    <button id="inspireBtn" style="margin:20px 0;padding:14px;width:100%;background:#333;color:#fff;border:none;border-radius:8px;font-size:16px;">🎲 Inspire Me – Random Masterpiece</button>
+
+    <label>Final Prompt</label>
+    <textarea id="finalPrompt" readonly placeholder="// Start building your prompt above ↑"></textarea>
+  </div>
+
+  <!-- Saved Prompts Page -->
+  <div id="savedPage" class="page">
+    <div class="back-btn" id="backBtn">← Editor</div>
+    <input type="text" id="searchSaved" placeholder="Search saved prompts...">
+    <div class="saved-tabs">
+      <div class="saved-tab active" data-tab="all">All</div>
+      <div class="saved-tab" data-tab="favorites">Favorites ⭐</div>
+    </div>
+    <div id="savedList" style="padding:0 16px;"></div>
+    <div style="height:100px;"></div>
+    <div class="clear-btn" id="clearAll">Clear All Saved Prompts</div>
+  </div>
+
+  <div class="fab" id="copyBtn" title="Copy & Save">📋</div>
+  <div class="fab fab2" id="sendBtn" title="Send to Grok">➤</div>
+
+  <div class="pwa-banner" id="pwaBanner">
+    <div style="margin-bottom:8px;font-weight:600;">Add Aurora Lab to Home Screen for instant access</div>
+    <button id="installBtn">Install</button>
+    <button id="dismissPwa" style="background:none;color:var(--text-dim);">No thanks</button>
+  </div>
+
+  <!-- Sidebar Menu -->
+  <div class="overlay" id="overlay"></div>
+  <div class="sidebar" id="sidebar">
+    <div class="menu-item" id="openSaved">📌 Saved Prompts</div>
+    <div class="menu-item" id="toggleTheme">🌙 Light / Dark Mode</div>
+    <div class="menu-item" id="toggleAutoCopy">🔄 Auto-Copy: <span id="autoCopyStatus">Off</span></div>
+    <div class="menu-item" id="exportBtn">💾 Export Session</div>
+    <div class="menu-item" id="importBtn">📥 Import Session</div>
+  </div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+let currentTech = "basic";
+let lastSavedPrompt = "";
+let autoCopyEnabled = localStorage.getItem("autoCopy") === "true";
+let deferredPrompt;
+
+const inspireLibrary = [
+  "A majestic white dragon perched on a crystal tower under aurora borealis, photorealistic, cinematic lighting, 8k",
+  "Retro 80s vaporwave cityscape at sunset with palm trees and grid, neon pink and blue",
+  "Steampunk airship battle above Victorian London, dramatic clouds, oil painting style",
+  "Minimalist black and white ink drawing of a lone samurai under cherry blossoms",
+  "Futuristic cyberpunk hacker girl with neon tattoos, rain-soaked alley, blade runner aesthetic",
+  "Enchanted forest with bioluminescent mushrooms and fairies, volumetric god rays",
+  "Ancient ruins on an alien planet with two suns, sci-fi concept art, highly detailed",
+  "Cozy cabin in winter mountains, warm window light, snow falling, hyperrealistic",
+  "Surreal floating islands with waterfalls, dreamlike, in the style of Studio Ghibli",
+  "Epic space battle between star destroyers and rebel fighters, cinematic, lens flare"
+];
+
+const techniques = {
+  basic: () => {
+    const s = $("#basic-subject").value.trim();
+    const a = $("#basic-action").value.trim();
+    const st = $("#basic-style").value.trim();
+    return s ? `${s}${a ? ", " + a : ""}${st ? ", " + st : ""}` : "";
+  },
+  hierarchical: () => {
+    const parts = [];
+    if ($("#hier-camera").value) parts.push($("#hier-camera").value.trim() + ".");
+    if ($("#hier-fg").value) parts.push("Foreground: " + $("#hier-fg").value.trim() + ".");
+    if ($("#hier-mg").value) parts.push("Midground: " + $("#hier-mg").value.trim() + ".");
+    if ($("#hier-bg").value) parts.push("Background: " + $("#hier-bg").value.trim() + ".");
+    if ($("#hier-atmo").value) parts.push("Atmosphere: " + $("#hier-atmo").value.trim() + ".");
+    return parts.join(" ");
+  },
+  scanline: () => `[Setting]: ${$("#scan-setting").value.trim()}\n[Lighting & Atmosphere]: ${$("#scan-light").value.trim()}\n[Left]: ${$("#scan-left").value.trim()}\n[Right]: ${$("#scan-right").value.trim()}\n[Camera]: ${$("#scan-camera").value.trim()}`,
+  text: () => {
+    const med = $("#text-medium").value.trim();
+    const txt = $("#text-exact").value.trim();
+    const sty = $("#text-style").value.trim();
+    const ext = $("#text-extra").value.trim();
+    return `${med ? med + ", " : ""}the text strictly reads "${txt}"${sty ? " in " + sty : ""}${ext ? ", " + ext : ""}`;
+  },
+  master: () => {
+    return Array.from($$("#dynamicRows .dynamic-row")).map(row => {
+      const title = row.querySelector("input").value.trim() || "Section";
+      const content = row.querySelector("textarea").value.trim();
+      return `[${title}]: ${content}`;
+    }).join("\n");
+  }
+};
+
+function computePrompt() {
+  const prompt = techniques[currentTech]().trim();
+  $("#finalPrompt").value = prompt || "// Fill fields above ↑";
+  updateWordCount(prompt);
+  if (autoCopyEnabled && prompt) navigator.clipboard.writeText(prompt);
+}
+function updateWordCount(text) {
+  const words = text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
+  $("#wordCount").textContent = `${words} ${words === 1 ? "word" : "words"}`;
+}
+
+function savePromptToHistory() {
+  const prompt = $("#finalPrompt").value.trim();
+  if (!prompt || prompt === lastSavedPrompt) return;
+
+  const data = {
+    tech: currentTech,
+    fields: getAllFields(),
+    prompt: prompt,
+    timestamp: new Date().toISOString(),
+    favorite: false
+  };
+
+  let saved = JSON.parse(localStorage.getItem("auroraSaved") || "[]");
+  saved = saved.filter(h => h.prompt !== prompt);
+  saved.unshift(data);
+  localStorage.setItem("auroraSaved", JSON.stringify(saved.slice(0, 200)));
+  lastSavedPrompt = prompt;
+  renderSaved();
+}
+
+function renderSaved(filter = "", tab = "all") {
+  const list = $("#savedList");
+  let saved = JSON.parse(localStorage.getItem("auroraSaved") || "[]");
+  if (tab === "favorites") saved = saved.filter(h => h.favorite);
+  if (filter) saved = saved.filter(h => h.prompt.toLowerCase().includes(filter.toLowerCase()));
+
+  if (saved.length === 0) {
+    list.innerHTML = `<div style="text-align:center;color:var(--text-dim);padding:60px 20px;">No ${tab === "favorites" ? "favorite" : "saved"} prompts yet (long press to favorite)</div>`;
+    return;
+  }
+
+  list.innerHTML = saved.map((h, i) => `
+    <div class="history-item" data-index="${i}">
+      <div class="history-preview">${h.prompt.replace(/\n/g, " ↵ ").slice(0, 130)}${h.prompt.length > 130 ? "..." : ""}</div>
+      <div class="history-meta">
+        ${new Date(h.timestamp).toLocaleString()} • ${h.tech.toUpperCase()} ${h.favorite ? "⭐" : ""}
+      </div>
+    </div>
+  `).join("");
+}
+
+function loadSaved(index) {
+  const saved = JSON.parse(localStorage.getItem("auroraSaved") || "[]");
+  const item = saved[index];
+  if (!item) return;
+  currentTech = item.tech;
+  switchTab(currentTech);
+  setAllFields(item.fields);
+  computePrompt();
+  showPage("editorPage");
+}
+
+function toggleFavorite(index) {
+  const saved = JSON.parse(localStorage.getItem("auroraSaved") || "[]");
+  saved[index].favorite = !saved[index].favorite;
+  localStorage.setItem("auroraSaved", JSON.stringify(saved));
+  renderSaved($("#searchSaved").value, $(".saved-tab.active").dataset.tab);
+}
+
+function getAllFields() {
+  const fields = {
+    "basic-subject": $("#basic-subject").value,
+    "basic-action": $("#basic-action").value,
+    "basic-style": $("#basic-style").value,
+    "hier-camera": $("#hier-camera").value,
+    "hier-fg": $("#hier-fg").value,
+    "hier-mg": $("#hier-mg").value,
+    "hier-bg": $("#hier-bg").value,
+    "hier-atmo": $("#hier-atmo").value,
+    "scan-setting": $("#scan-setting").value,
+    "scan-light": $("#scan-light").value,
+    "scan-left": $("#scan-left").value,
+    "scan-right": $("#scan-right").value,
+    "scan-camera": $("#scan-camera").value,
+    "text-medium": $("#text-medium").value,
+    "text-exact": $("#text-exact").value,
+    "text-style": $("#text-style").value,
+    "text-extra": $("#text-extra").value,
+  };
+  if (currentTech === "master") {
+    fields.masterRows = Array.from($$("#dynamicRows .dynamic-row")).map(row => ({
+      title: row.querySelector("input").value,
+      content: row.querySelector("textarea").value
+    }));
+  }
+  return fields;
+}
+
+function setAllFields(data) {
+  Object.keys(data).forEach(k => {
+    if (k === "masterRows") return;
+    const el = $(`#${k}`);
+    if (el) el.value = data[k] || "";
+  });
+  if (data.masterRows && currentTech === "master") {
+    $("#dynamicRows").innerHTML = "";
+    data.masterRows.forEach(row => addDynamicRow(row.title, row.content));
+  }
+}
+
+function switchTab(tech) {
+  currentTech = tech;
+  $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tech === tech));
+  $$(".section").forEach(s => s.classList.toggle("active", s.id === tech));
+  if (tech === "master" && $("#dynamicRows").children.length === 0) initMasterRows();
+  computePrompt();
+}
+
+function showPage(id) {
+  $$(".page").forEach(p => p.classList.remove("active"));
+  $(`#${id}`).classList.add("active");
+  if (id === "savedPage") renderSaved($("#searchSaved").value, $(".saved-tab.active").dataset.tab);
+}
+
+// Master Pseudo-Code
+function initMasterRows() {
+  const defaults = ["Setting", "Lighting & Atmosphere", "Main Subject", "Secondary Elements", "Camera", "Style"];
+  defaults.forEach(title => addDynamicRow(title, ""));
+}
+function addDynamicRow(title = "", content = "") {
+  const row = document.createElement("div");
+  row.className = "dynamic-row";
+  row.innerHTML = `
+    <input type="text" placeholder="Section Title" value="${title}">
+    <textarea placeholder="Content...">${content}</textarea>
+    <div class="remove-row" onclick="this.parentElement.remove(); computePrompt();">−</div>
+  `;
+  $("#dynamicRows").appendChild(row);
+  row.querySelector("input").addEventListener("input", computePrompt);
+  row.querySelector("textarea").addEventListener("input", computePrompt);
+}
+
+// Event Listeners
+document.addEventListener("input", e => { if (!e.target.closest(".no-auto")) computePrompt(); });
+$$(".tab").forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tech)));
+$("#addRow").addEventListener("click", () => addDynamicRow());
+$("#inspireBtn").addEventListener("click", () => {
+  const random = inspireLibrary[Math.floor(Math.random() * inspireLibrary.length)];
+  $("#finalPrompt").value = random;
+  updateWordCount(random);
+  if (autoCopyEnabled) navigator.clipboard.writeText(random);
+});
+
+$$(".preset-btn").forEach(btn => btn.addEventListener("click", () => {
+  const field = currentTech === "basic" ? "#basic-style" : "#hier-atmo";
+  const el = $(field);
+  if (el) el.value = btn.dataset.style;
+  computePrompt();
+}));
+
+$("#copyBtn").addEventListener("click", () => {
+  const prompt = $("#finalPrompt").value.trim();
+  if (prompt) {
+    navigator.clipboard.writeText(prompt);
+    savePromptToHistory();
+    $("#copyBtn").textContent = "✓";
+    setTimeout(() => $("#copyBtn").textContent = "📋", 1200);
+  }
+});
+
+$("#sendBtn").addEventListener("click", () => {
+  const prompt = encodeURIComponent($("#finalPrompt").value.trim());
+  if (prompt) location.href = `https://x.com/i/grok?query=${prompt}`;
+});
+
+$("#menuBtn").addEventListener("click", () => {$("#overlay").classList.add("active"); $("#sidebar").classList.add("active");});
+$("#overlay").addEventListener("click", () => {$("#overlay").classList.remove("active"); $("#sidebar").classList.remove("active");});
+$("#openSaved").addEventListener("click", () => { showPage("savedPage"); $("#overlay").classList.remove("active"); $("#sidebar").classList.remove("active"); });
+$("#backBtn").addEventListener("click", () => showPage("editorPage"));
+
+$("#toggleTheme").addEventListener("click", () => {
+  const isLight = document.documentElement.dataset.theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  localStorage.setItem("theme", isLight);
+  $("#overlay").classList.remove("active"); $("#sidebar").classList.remove("active");
+});
+$("#toggleAutoCopy").addEventListener("click", () => {
+  autoCopyEnabled = !autoCopyEnabled;
+  localStorage.setItem("autoCopy", autoCopyEnabled);
+  $("#autoCopyStatus").textContent = autoCopyEnabled ? "On" : "Off";
+  $("#overlay").classList.remove("active"); $("#sidebar").classList.remove("active");
+});
+
+$("#searchSaved").addEventListener("input", e => renderSaved(e.target.value, $(".saved-tab.active").dataset.tab));
+$$(".saved-tab").forEach(t => t.addEventListener("click", () => {
+  $$(".saved-tab").forEach(st => st.classList.toggle("active", st === t));
+  renderSaved($("#searchSaved").value, t.dataset.tab);
+}));
+$("#savedList").addEventListener("click", e => {
+  const item = e.target.closest(".history-item");
+  if (item) {
+    if (e.target.tagName === "path" || e.target.classList.contains("favorite-btn")) return;
+    loadSaved(item.dataset.index);
+  }
+});
+
+$("#clearAll").addEventListener("click", () => {
+  if (confirm("Delete all saved prompts?")) {
+    localStorage.removeItem("auroraSaved");
+    lastSavedPrompt = "";
+    renderSaved();
+  }
+});
+
+$("#exportBtn").addEventListener("click", () => {
+  const data = { saved: localStorage.getItem("auroraSaved"), current: getAllFields(), tech: currentTech };
+  navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+  alert("Session exported to clipboard!");
+  $("#overlay").classList.remove("active"); $("#sidebar").classList.remove("active");
+});
+$("#importBtn").addEventListener("click", () => {
+  const json = prompt("Paste exported JSON:");
+  if (json) {
+    try {
+      const data = JSON.parse(json);
+      if (data.saved) localStorage.setItem("auroraSaved", data.saved);
+      if (data.current) setAllFields(data.current);
+      if (data.tech) switchTab(data.tech);
+      computePrompt(); renderSaved();
+      alert("Imported successfully!");
+    } catch { alert("Invalid JSON"); }
+  }
+  $("#overlay").classList.remove("active"); $("#sidebar").classList.remove("active");
+});
+
+// PWA Install
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  $("#pwaBanner").style.display = "block";
+});
+$("#installBtn").addEventListener("click", () => {
+  $("#pwaBanner").style.display = "none";
+  deferredPrompt.prompt();
+});
+$("#dismissPwa").addEventListener("click", () => $("#pwaBanner").style.display = "none");
+
+// Init
+if (localStorage.getItem("theme") === "light" || (!localStorage.getItem("theme") && window.matchMedia("(prefers-color-scheme: light)").matches)) {
+  document.documentElement.dataset.theme = "light";
+}
+$("#autoCopyStatus").textContent = autoCopyEnabled ? "On" : "Off";
+initMasterRows();
+computePrompt();
+renderSaved();
+</script>
+</body>
+</html>

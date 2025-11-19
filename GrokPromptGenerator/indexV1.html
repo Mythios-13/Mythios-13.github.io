@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Aurora Prompt Lab</title>
+  <meta name="description" content="Advanced Aurora (Grok Imagine) prompt generator based on @tetsuoai techniques"/>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --primary: #58a6ff;
+      --text: #f0f6fc;
+      --text-dim: #8b949e;
+      --border: #30363d;
+      --danger: #f85149;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      padding-bottom: 90px;
+    }
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 56px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 1000;
+    }
+    .logo { font-weight: 800; font-size: 18px; letter-spacing: -0.5px; }
+    .menu-btn { width: 44px; height: 44px; cursor: pointer; }
+    .menu-btn span, .menu-btn span::before, .menu-btn span::after {
+      display: block; width: 24px; height: 2px; background: var(--text); position: relative; left: 10px; top: 21px;
+      transition: .3s;
+    }
+    .menu-btn span::before { content:''; position:absolute; top:-8px; }
+    .menu-btn span::after { content:''; position:absolute; top:8px; }
+
+    main { padding: 70px 16px 20px; }
+    .technique-tabs {
+      display: flex;
+      overflow-x: auto;
+      gap: 8px;
+      margin-bottom: 20px;
+      padding-bottom: 8px;
+      scrollbar-width: none;
+    }
+    .technique-tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      padding: 10px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      white-space: nowrap;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .tab.active {
+      background: var(--primary);
+      color: #000;
+      font-weight: 600;
+    }
+
+    .section {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .section.active { display: block; animation: fadeIn .3s; }
+    @keyframes fadeIn { from {opacity:0;} to {opacity:1;} }
+
+    label {
+      display: block;
+      margin: 16px 0 8px;
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+    textarea, input {
+      width: 100%;
+      background: #010409;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 15px;
+      resize: vertical;
+      min-height: 80px;
+    }
+    textarea:focus, input:focus { outline: none; border-color: var(--primary); }
+
+    #finalPrompt {
+      background: #010409;
+      min-height: 120px;
+      font-family: 'SF Mono', monospace;
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+
+    .fab {
+      position: fixed;
+      right: 20px;
+      bottom: 80px; /* above tab bar on iPhone */
+      width: 56px; height: 56px;
+      background: var(--primary);
+      color: #000;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      box-shadow: 0 4px 12px rgba(88,166,255,0.4);
+      z-index: 999;
+      cursor: pointer;
+    }
+
+    /* Sidebar menu */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      opacity: 0;
+      visibility: hidden;
+      transition: .3s;
+      z-index: 1100;
+    }
+    .overlay.active { opacity:1; visibility:visible; }
+    .sidebar {
+      position: fixed;
+      top: 0; left: -300px;
+      width: 280px; height: 100dvh;
+      background: var(--surface);
+      padding: 70px 20px 20px;
+      transition: .3s;
+      z-index: 1200;
+      border-right: 1px solid var(--border);
+    }
+    .sidebar.active { left: 0; }
+    .sidebar h3 { margin: 20px 0 12px; font-size: 16px; }
+    .menu-item {
+      padding: 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-bottom: 4px;
+    }
+    .menu-item:hover { background: rgba(88,166,255,0.2); }
+    .history-item {
+      font-size: 14px;
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .history-item:hover { background: rgba(255,255,255,0.05); }
+
+    .clear-btn { color: var(--danger); font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">Aurora Lab</div>
+    <div class="menu-btn" id="menuBtn"><span></span></div>
+  </header>
+
+  <main>
+    <div class="technique-tabs">
+      <div class="tab active" data-tech="basic">Basic</div>
+      <div class="tab" data-tech="hierarchical">Hierarchical</div>
+      <div class="tab" data-tech="scanline">Scanline Code</div>
+      <div class="tab" data-tech="text">Text/Logo</div>
+    </div>
+
+    <!-- BASIC -->
+    <div id="basic" class="section active">
+      <label>Subject (first!)</label>
+      <textarea id="basic-subject" placeholder="A cyberpunk fox hacker..."></textarea>
+      <label>Action / State</label>
+      <textarea id="basic-action" placeholder="sitting at a holographic terminal"></textarea>
+      <label>Style & Lighting</label>
+      <textarea id="basic-style" placeholder="volumetric neon lighting, cinematic, 8k"></textarea>
+    </div>
+
+    <!-- HIERARCHICAL -->
+    <div id="hierarchical" class="section">
+      <label>Camera & Framing</label>
+      <input type="text" id="hier-camera" placeholder="Wide shot, low angle"/>
+      <label>Foreground</label>
+      <textarea id="hier-fg" placeholder="A glowing campfire with sparks"></textarea>
+      <label>Midground</label>
+      <textarea id="hier-mg" placeholder="Two astronauts laughing"></textarea>
+      <label>Background</label>
+      <textarea id="hier-bg" placeholder="Mars landscape under starry sky"></textarea>
+      <label>Atmosphere</label>
+      <textarea id="hier-atmo" placeholder="cold, cozy, cinematic rim lighting"></textarea>
+    </div>
+
+    <!-- SCANLINE PSEUDO-CODE (the real power) -->
+    <div id="scanline" class="section">
+      <label>[Global Setting]</label>
+      <textarea id="scan-setting" placeholder="Night time, heavy rain, neon-lit cyberpunk Tokyo street"></textarea>
+      <label>[Atmosphere & Lighting]</label>
+      <textarea id="scan-light" placeholder="volumetric god rays, reflections on wet pavement, cinematic blue-orange palette"></textarea>
+      <label>[Left Side]</label>
+      <textarea id="scan-left" placeholder="A female cybernetic ninja in matte black armor, crouching, katana drawn"></textarea>
+      <label>[Right Side]</label>
+      <textarea id="scan-right" placeholder="Giant yellow construction mech swinging massive wrench, motion blur"></textarea>
+      <label>[Camera]</label>
+      <input type="text" id="scan-camera" placeholder="Low dramatic angle, wide shot, 2.35:1 cinematic"/>
+    </div>
+
+    <!-- TEXT / LOGO -->
+    <div id="text" class="section">
+      <label>Container / Medium</label>
+      <textarea id="text-medium" placeholder="A sleek black metal sign on a concrete wall"></textarea>
+      <label>Exact Text (in quotes)</label>
+      <textarea id="text-exact" placeholder="NEON DREAMS"></textarea>
+      <label>Font & Style</label>
+      <textarea id="text-style" placeholder="buzzing hot pink neon tubes, thin elegant lettering, slight flicker"></textarea>
+      <label>Extra Precision</label>
+      <textarea id="text-extra" placeholder="Text must be perfectly legible and exactly as written, no artistic changes"></textarea>
+    </div>
+
+    <label>Final Computed Prompt</label>
+    <textarea id="finalPrompt" readonly></textarea>
+  </main>
+
+  <div class="fab" id="copyBtn" title="Copy prompt">📋</div>
+
+  <!-- Sidebar Menu -->
+  <div class="overlay" id="overlay"></div>
+  <div class="sidebar" id="sidebar">
+    <h3>📋 Prompt History</h3>
+    <div id="historyList"></div>
+    <div class="menu-item clear-btn" id="clearHistory">Clear History</div>
+
+    <h3>💾 Data</h3>
+    <div class="menu-item" id="exportBtn">Export Session (JSON)</div>
+    <div class="menu-item" id="importBtn">Import Session (paste JSON)</div>
+  </div>
+
+<script>
+const techniques = {
+  basic: () => {
+    const s = $("#basic-subject").value.trim();
+    const a = $("#basic-action").value.trim();
+    const st = $("#basic-style").value.trim();
+    return s ? `${s}${a ? ", " + a : ""}${st ? ", " + st : ""}` : "";
+  },
+  hierarchical: () => {
+    const parts = [];
+    if ($("#hier-camera").value) parts.push($("#hier-camera").value.trim() + ".");
+    if ($("#hier-fg").value) parts.push("Foreground: " + $("#hier-fg").value.trim() + ".");
+    if ($("#hier-mg").value) parts.push("Midground: " + $("#hier-mg").value.trim() + ".");
+    if ($("#hier-bg").value) parts.push("Background: " + $("#hier-bg").value.trim() + ".");
+    if ($("#hier-atmo").value) parts.push("Atmosphere: " + $("#hier-atmo").value.trim() + ".");
+    return parts.join(" ");
+  },
+  scanline: () => {
+    return `[Setting]: ${$("#scan-setting").value.trim()}\n` +
+           `[Lighting & Atmosphere]: ${$("#scan-light").value.trim()}\n` +
+           `[Left]: ${$("#scan-left").value.trim()}\n` +
+           `[Right]: ${$("#scan-right").value.trim()}\n` +
+           `[Camera]: ${$("#scan-camera").value.trim()}`;
+  },
+  text: () => {
+    const med = $("#text-medium").value.trim();
+    const txt = $("#text-exact").value.trim();
+    const sty = $("#text-style").value.trim();
+    const ext = $("#text-extra").value.trim();
+    return `${med ? med + ", " : ""}the text strictly reads "${txt}"${sty ? " in " + sty : ""}${ext ? ", " + ext : ""}`;
+  }
+};
+
+let currentTech = "basic";
+
+function $(s) { return document.querySelector(s); }
+function computePrompt() {
+  const prompt = techniques[currentTech]();
+  $("#finalPrompt").value = prompt.trim() || "// Fill the fields above ↑";
+  saveCurrentToHistory();
+}
+function saveCurrentToHistory() {
+  const data = getAllFields();
+  data.tech = currentTech;
+  data.timestamp = new Date().toISOString();
+  data.preview = $("#finalPrompt").value.slice(0, 80) + ( $("#finalPrompt").value.length > 80 ? "..." : "");
+  let history = JSON.parse(localStorage.getItem("auroraHistory") || "[]");
+  // avoid exact duplicates
+  if (history[0] && history[0].preview === data.preview) return;
+  history.unshift(data);
+  history = history.slice(0, 50); // keep last 50
+  localStorage.setItem("auroraHistory", JSON.stringify(history));
+  renderHistory();
+}
+function renderHistory() {
+  const list = $("#historyList");
+  const history = JSON.parse(localStorage.getItem("auroraHistory") || "[]");
+  if (history.length === 0) {
+    list.innerHTML = "<div style='color:var(--text-dim);padding:12px'>No history yet</div>";
+    return;
+  }
+  list.innerHTML = history.map((h,i) => `
+    <div class="history-item" data-index="${i}">
+      <div style="font-weight:600">${h.preview}</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">
+        ${new Date(h.timestamp).toLocaleString()}
+      </div>
+    </div>`).join("");
+}
+function loadFromHistory(index) {
+  const history = JSON.parse(localStorage.getItem("auroraHistory") || "[]");
+  const item = history[index];
+  if (!item) return;
+  currentTech = item.tech;
+  switchTab(currentTech);
+  setAllFields(item);
+  computePrompt();
+  closeMenu();
+}
+function getAllFields() {
+  return {
+    "basic-subject": $("#basic-subject").value,
+    "basic-action": $("#basic-action").value,
+    "basic-style": $("#basic-style").value,
+    "hier-camera": $("#hier-camera").value,
+    "hier-fg": $("#hier-fg").value,
+    "hier-mg": $("#hier-mg").value,
+    "hier-bg": $("#hier-bg").value,
+    "hier-atmo": $("#hier-atmo").value,
+    "scan-setting": $("#scan-setting").value,
+    "scan-light": $("#scan-light").value,
+    "scan-left": $("#scan-left").value,
+    "scan-right": $("#scan-right").value,
+    "scan-camera": $("#scan-camera").value,
+    "text-medium": $("#text-medium").value,
+    "text-exact": $("#text-exact").value,
+    "text-style": $("#text-style").value,
+    "text-extra": $("#text-extra").value,
+  };
+}
+function setAllFields(data) {
+  Object.keys(data).forEach(k => {
+    const el = $(`#${k}`);
+    if (el) el.value = data[k] || "";
+  });
+}
+function switchTab(tech) {
+  currentTech = tech;
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tech === tech));
+  document.querySelectorAll(".section").forEach(s => s.classList.toggle("active", s.id === tech));
+  computePrompt();
+}
+function copyPrompt() {
+  navigator.clipboard.writeText($("#finalPrompt").value);
+  const btn = $("#copyBtn");
+  const old = btn.textContent;
+  btn.textContent = "✓";
+  setTimeout(() => btn.textContent = old, 1500);
+}
+function openMenu() {
+  $("#overlay").classList.add("active");
+  $("#sidebar").classList.add("active");
+}
+function closeMenu() {
+  $("#overlay").classList.remove("active");
+  $("#sidebar").classList.remove("active");
+}
+
+// Event Listeners
+document.addEventListener("input", computePrompt);
+document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tech)));
+$("#copyBtn").addEventListener("click", copyPrompt);
+$("#menuBtn").addEventListener("click", openMenu);
+$("#overlay").addEventListener("click", closeMenu);
+$("#clearHistory").addEventListener("click", () => {
+  if (confirm("Delete all history?")) {
+    localStorage.removeItem("auroraHistory");
+    renderHistory();
+  }
+});
+$("#historyList").addEventListener("click", e => {
+  const item = e.target.closest(".history-item");
+  if (item) loadFromHistory(item.dataset.index);
+});
+$("#exportBtn").addEventListener("click", () => {
+  const data = {
+    history: localStorage.getItem("auroraHistory"),
+    current: getAllFields(),
+    currentTech: currentTech
+  };
+  navigator.clipboard.writeText(JSON.stringify(data));
+  alert("Full session copied to clipboard as JSON!");
+});
+$("#importBtn").addEventListener("click", () => {
+  const json = prompt("Paste your exported JSON here:");
+  if (!json) return;
+  try {
+    const data = JSON.parse(json);
+    if (data.history) localStorage.setItem("auroraHistory", data.history);
+    if (data.current) setAllFields(data.current);
+    if (data.currentTech) switchTab(data.currentTech);
+    renderHistory();
+    computePrompt();
+    alert("Session imported!");
+  } catch(e) { alert("Invalid JSON"); }
+});
+
+// Init
+computePrompt();
+renderHistory();
+</script>
+</body>
+</html>

@@ -62,6 +62,12 @@
       },
       {
         "id": 4,
+        "title": "Grok AI experiments",
+        "content": "The projects above were generated iteratively with Grok AI, super grok plan.\n\n[Aurora Prompt Master](https://Mythios-13.github.io/GrokPromptGenerator/indexV4.html)  ",
+        "template": "default"
+      },
+      {
+        "id": 5,
         "template": "default",
         "title": "About",
         "content": "The code was generated iteratively with help of AI. OpenAi free plan reasoning enabled or Copilot free in VS Code."
