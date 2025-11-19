@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Aurora Lab v2</title>
+  <title>Aurora Lab v1</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#58a6ff">
@@ -165,6 +165,9 @@
       <textarea id="basic-action" placeholder="sitting at a holographic terminal"></textarea>
       <label>Style & Lighting</label>
       <textarea id="basic-style" placeholder="volumetric neon lighting, cinematic, 8k"></textarea>
+
+      <button id="inspireBtn" style="margin:20px 0;padding:14px;width:100%;background:#333;color:#fff;border:none;border-radius:8px;font-size:16px;">🎲 Inspire Me – Random Masterpiece</button>
+
     </div>
 
     <!-- HIERARCHICAL -->
@@ -222,8 +225,6 @@
       <div class="preset-btn" data-style="minimalist, white space, clean typography">Minimal</div>
     </div>
 
-    <button id="inspireBtn" style="margin:20px 0;padding:14px;width:100%;background:#333;color:#fff;border:none;border-radius:8px;font-size:16px;">🎲 Inspire Me – Random Masterpiece</button>
-
     <label>Final Prompt</label>
     <textarea id="finalPrompt" readonly placeholder="// Start building your prompt above ↑"></textarea>
   </div>
@@ -242,7 +243,7 @@
   </div>
 
   <div class="fab" id="copyBtn" title="Copy & Save">📋</div>
-  <div class="fab fab2" id="sendBtn" title="Send to Grok">➤</div>
+  <div class="fab fab2" id="sendBtn" title="Open in Grok App">🤖</div>
 
   <div class="pwa-banner" id="pwaBanner">
     <div style="margin-bottom:8px;font-weight:600;">Add Aurora Lab to Home Screen for instant access</div>
@@ -353,18 +354,25 @@ function renderSaved(filter = "", tab = "all") {
   if (filter) saved = saved.filter(h => h.prompt.toLowerCase().includes(filter.toLowerCase()));
 
   if (saved.length === 0) {
-    list.innerHTML = `<div style="text-align:center;color:var(--text-dim);padding:60px 20px;">No ${tab === "favorites" ? "favorite" : "saved"} prompts yet (long press to favorite)</div>`;
+    list.innerHTML = `<div style="text-align:center;color:var(--text-dim);padding:60px 20px;">No ${tab === "favorites" ? "favorite" : "saved"} prompts yet</div>`;
     return;
   }
 
   list.innerHTML = saved.map((h, i) => `
-    <div class="history-item" data-index="${i}">
-      <div class="history-preview">${h.prompt.replace(/\n/g, " ↵ ").slice(0, 130)}${h.prompt.length > 130 ? "..." : ""}</div>
-      <div class="history-meta">
-        ${new Date(h.timestamp).toLocaleString()} • ${h.tech.toUpperCase()} ${h.favorite ? "⭐" : ""}
+  <div class="history-item" data-index="${i}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div style="flex:1;">
+        <div class="history-preview">${h.prompt.replace(/\n/g, " ↵ ").slice(0, 130)}${h.prompt.length > 130 ? "..." : ""}</div>
+        <div class="history-meta">
+          ${new Date(h.timestamp).toLocaleString()} • ${h.tech.toUpperCase()}
+        </div>
+      </div>
+      <div class="favorite-btn" data-index="${i}" style="font-size:20px;cursor:pointer;padding:4px;border-radius:8px;transition:.2s;">
+        ${h.favorite ? "⭐" : "☆"}
       </div>
     </div>
-  `).join("");
+  </div>
+`).join("");
 }
 
 function loadSaved(index) {
@@ -380,6 +388,7 @@ function loadSaved(index) {
 
 function toggleFavorite(index) {
   const saved = JSON.parse(localStorage.getItem("auroraSaved") || "[]");
+  if (!saved[index]) return;
   saved[index].favorite = !saved[index].favorite;
   localStorage.setItem("auroraSaved", JSON.stringify(saved));
   renderSaved($("#searchSaved").value, $(".saved-tab.active").dataset.tab);
@@ -488,7 +497,24 @@ $("#copyBtn").addEventListener("click", () => {
 
 $("#sendBtn").addEventListener("click", () => {
   const prompt = encodeURIComponent($("#finalPrompt").value.trim());
-  if (prompt) location.href = `https://x.com/i/grok?query=${prompt}`;
+  if (!prompt) return;
+
+  // 1. Try Grok app first (iOS + Android deep link)
+  const grokAppUrl = `grok://chat?text=${prompt}`;
+
+  // 2. Fallback to web if app not installed
+  const webFallback = `https://x.com/i/grok?query=${prompt}`;
+
+  // iOS 9+ / Android: try to open app, fall back to web after 1 second if app not present
+  const opened = Date.now();
+  window.location = grokAppUrl;
+
+  setTimeout(() => {
+    if (Date.now() - opened < 1500) {
+      // App didn't open → redirect to web
+      window.location = webFallback;
+    }
+  }, 1200);
 });
 
 $("#menuBtn").addEventListener("click", () => {$("#overlay").classList.add("active"); $("#sidebar").classList.add("active");});
@@ -515,8 +541,12 @@ $$(".saved-tab").forEach(t => t.addEventListener("click", () => {
 }));
 $("#savedList").addEventListener("click", e => {
   const item = e.target.closest(".history-item");
+  const favBtn = e.target.closest(".favorite-btn");
+  if (favBtn) {
+    toggleFavorite(favBtn.dataset.index);
+    return;
+  }
   if (item) {
-    if (e.target.tagName === "path" || e.target.classList.contains("favorite-btn")) return;
     loadSaved(item.dataset.index);
   }
 });
