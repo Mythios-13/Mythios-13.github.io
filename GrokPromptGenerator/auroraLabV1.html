@@ -276,7 +276,7 @@
   </div>
 
   <div class="fab" id="copyBtn" title="Copy & Save">📋</div>
-  <!-- <div class="fab fab2" id="sendBtn" title="Open in Grok App">🤖</div> -->
+  <div class="fab fab2" style="display:none" id="sendBtn" title="Open in Grok App">🤖</div>
 
   <div class="pwa-banner" id="pwaBanner">
     <div style="margin-bottom:8px;font-weight:600;">Add Aurora Lab to Home Screen for instant access</div>
@@ -473,6 +473,7 @@ function switchTab(tech) {
   $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tech === tech));
   $$(".section").forEach(s => s.classList.toggle("active", s.id === tech));
   if (tech === "master" && $("#dynamicRows").children.length === 0) initMasterRows();
+  setTimeout(resizeAllTextareas, 100);
   computePrompt();
 }
 
@@ -666,13 +667,6 @@ function resizeAllTextareas() {
   });
 }
 document.addEventListener("input", resizeAllTextareas);
-switchTab = function(tech) {  /* override the existing one temporarily */
-  const old = window.switchTab;
-  old ? old(tech) : null;
-  setTimeout(resizeAllTextareas, 100);
-};
-
-
 
 
 initMasterRows();
