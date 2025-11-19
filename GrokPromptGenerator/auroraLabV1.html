@@ -81,11 +81,36 @@
     .section.active { display: block; }
 
     label { display: block; margin: 16px 0 8px; font-size: 14px; color: var(--text-dim); }
-    textarea, input[type=text] {
-      width: 100%; background: #010409; border: 1px solid var(--border); border-radius: 8px;
-      padding: 12px; color: var(--text); font-family: inherit; font-size: 15px; resize: vertical; min-height: 80px;
+        textarea, input[type=text] {
+        width: 100%;
+        background: #010409;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        color: var(--text);
+        font-family: inherit;
+        font-size: 16px;           /* bigger = easier to type on iOS */
+        resize: none;              /* disables manual resize handle */
+        min-height: 80px;
+        line-height: 1.5;
+        overflow: hidden;          /* important for auto-grow */
+        transition: border-color .2s;
     }
-    [data-theme="light"] textarea, [data-theme="light"] input { background: #ffffff; color: #1f2328; }
+    [ data-theme="light" ] textarea, [ data-theme="light" ] input { background: #ffffff; color: #1f2328; }
+
+    /* Auto-grow magic */
+    textarea {
+        height: 80px;              /* default */
+        field-sizing: content;     /* modern browsers (iOS 18+, Chrome Android) */
+    }
+
+    /* Fallback for older browsers */
+    textarea {
+        height: auto;
+    }
+    textarea:focus {
+        height: auto;
+    }
 
     #finalPrompt { background: #010409; min-height: 130px; font-family: 'SF Mono', monospace; font-size: 14px; white-space: pre-wrap; }
     [data-theme="light"] #finalPrompt { background: #ffffff; color: #1f2328; }
@@ -107,11 +132,19 @@
     .preset-btn.active { background: var(--primary); color: #000; }
 
     .dynamic-row {
-      display: flex; gap: 8px; align-items: flex-start; margin-bottom: 12px;
+      margin-bottom: 24px;
     }
-    .dynamic-row input:first-child { width: 130px; flex-shrink: 0; min-height: 48px; }
-    .dynamic-row textarea { flex: 1; }
-    .remove-row { color: var(--danger); font-size: 24px; cursor: pointer; width: 40px; text-align: center; }
+    .dynamic-row input:first-child {
+      width: 100%;
+      margin-bottom: 8px;
+    }
+    .remove-row {
+      color: var(--danger);
+      text-align: center;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
 
     .saved-tabs { display: flex; gap: 12px; margin: 0 16px 16px; }
     .saved-tab { padding: 8px 16px; border-bottom: 2px solid transparent; cursor: pointer; }
@@ -243,7 +276,7 @@
   </div>
 
   <div class="fab" id="copyBtn" title="Copy & Save">📋</div>
-  <div class="fab fab2" id="sendBtn" title="Open in Grok App">🤖</div>
+  <!-- <div class="fab fab2" id="sendBtn" title="Open in Grok App">🤖</div> -->
 
   <div class="pwa-banner" id="pwaBanner">
     <div style="margin-bottom:8px;font-weight:600;">Add Aurora Lab to Home Screen for instant access</div>
@@ -458,13 +491,24 @@ function addDynamicRow(title = "", content = "") {
   const row = document.createElement("div");
   row.className = "dynamic-row";
   row.innerHTML = `
-    <input type="text" placeholder="Section Title" value="${title}">
-    <textarea placeholder="Content...">${content}</textarea>
-    <div class="remove-row" onclick="this.parentElement.remove(); computePrompt();">−</div>
+    <input type="text" placeholder="Section Title (e.g. Setting, Lighting, Camera...)" value="${title}" style="margin-bottom:8px;">
+    <textarea placeholder="Content for this section...">${content}</textarea>
+    <div class="remove-row" onclick="this.parentElement.remove(); computePrompt();">− Remove Section</div>
   `;
   $("#dynamicRows").appendChild(row);
+
+  // Auto-resize + compute on input
+  const textarea = row.querySelector("textarea");
+  textarea.addEventListener("input", () => {
+    textarea.style.height = "auto";
+    textarea.style.height = textarea.scrollHeight + "px";
+    computePrompt();
+  });
   row.querySelector("input").addEventListener("input", computePrompt);
-  row.querySelector("textarea").addEventListener("input", computePrompt);
+
+  // Initial resize
+  textarea.style.height = "auto";
+  textarea.style.height = textarea.scrollHeight + "px";
 }
 
 // Event Listeners
@@ -604,6 +648,33 @@ if (localStorage.getItem("theme") === "light" || (!localStorage.getItem("theme")
   document.documentElement.dataset.theme = "light";
 }
 $("#autoCopyStatus").textContent = autoCopyEnabled ? "On" : "Off";
+
+
+// Auto-resize all textareas as user types (works everywhere, even iOS 17)
+document.addEventListener("input", e => {
+  if (e.target.tagName === "TEXTAREA") {
+    e.target.style.height = "auto";
+    e.target.style.height = e.target.scrollHeight + "px";
+  }
+});
+
+// Initial resize on load / tab switch
+function resizeAllTextareas() {
+  document.querySelectorAll("textarea").forEach(ta => {
+    ta.style.height = "auto";
+    ta.style.height = ta.scrollHeight + "px";
+  });
+}
+document.addEventListener("input", resizeAllTextareas);
+switchTab = function(tech) {  /* override the existing one temporarily */
+  const old = window.switchTab;
+  old ? old(tech) : null;
+  setTimeout(resizeAllTextareas, 100);
+};
+
+
+
+
 initMasterRows();
 computePrompt();
 renderSaved();
