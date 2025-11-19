@@ -496,25 +496,31 @@ $("#copyBtn").addEventListener("click", () => {
 });
 
 $("#sendBtn").addEventListener("click", () => {
-  const prompt = encodeURIComponent($("#finalPrompt").value.trim());
+  const prompt = $("#finalPrompt").value.trim();
   if (!prompt) return;
 
-  // 1. Try Grok app first (iOS + Android deep link)
-  const grokAppUrl = `grok://chat?text=${prompt}`;
+  const text = encodeURIComponent(prompt);
 
-  // 2. Fallback to web if app not installed
-  const webFallback = `https://x.com/i/grok?query=${prompt}`;
+  // Grok app universal link (works on both iOS and Android)
+  const grokApp = `grok://chat?text=${text}`;
 
-  // iOS 9+ / Android: try to open app, fall back to web after 1 second if app not present
-  const opened = Date.now();
-  window.location = grokAppUrl;
+  // Fallback web URL
+  const grokWeb = `https://x.com/i/grok?query=${text}`;
 
+  // Create an invisible <a> tag and click it — this is the only method that reliably works on iOS Safari
+  const a = document.createElement("a");
+  a.href = grokApp;
+  a.target = "_blank";           // important for iOS
+  a.rel = "noopener";            // security
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  // Fallback for devices without the app (after ~1 second)
   setTimeout(() => {
-    if (Date.now() - opened < 1500) {
-      // App didn't open → redirect to web
-      window.location = webFallback;
-    }
-  }, 1200);
+    // If the app didn't open, redirect to web
+    window.open(grokWeb, "_blank");
+  }, 800);
 });
 
 $("#menuBtn").addEventListener("click", () => {$("#overlay").classList.add("active"); $("#sidebar").classList.add("active");});
