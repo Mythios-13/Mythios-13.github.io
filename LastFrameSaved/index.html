@@ -15,8 +15,8 @@
       color: white;
     }
     #uploadBtn {
-      font-size: 24px;
-      padding: 20px 40px;
+      font-size: 42px;
+      padding: 30px 50px;
       background-color: #4CAF50;
       color: white;
       border: none;
@@ -101,41 +101,40 @@
         video.onerror = () => reject(new Error('Failed to seek video'));
       });
       
-      // Create canvas with video dimensions
+      // Create temporary canvas to draw the frame
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      canvas.style.border = '1px solid black';
-      canvas.style.marginTop = '20px';
-      canvas.style.maxWidth = '80vw';
-      canvas.style.maxHeight = '80vh';
-      canvas.style.height = 'auto';
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Get base64 data URL
+      const dataURL = canvas.toDataURL('image/png');
+      
+      // Create img element with base64 src
+      const img = document.createElement('img');
+      img.src = dataURL;
+      img.style.border = '1px solid black';
+      img.style.marginTop = '20px';
+      img.style.maxWidth = '80vw';
+      img.style.maxHeight = '80vh';
+      img.style.height = 'auto';
       
       // Clean up URL
       URL.revokeObjectURL(video.src);
       
-      // Remove old canvas if any
-      const oldCanvas = document.querySelector('canvas');
-      if (oldCanvas) oldCanvas.remove();
+      // Remove old img or canvas if any
+      const oldImage = document.querySelector('img') || document.querySelector('canvas');
+      if (oldImage) oldImage.remove();
       
       // Append for visualization
-      document.body.appendChild(canvas);
+      document.body.appendChild(img);
       
-      // Download as PNG
-      canvas.toBlob(blob => {
-        if (!blob) {
-          statusDiv.textContent = 'Failed to create image blob.';
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'last-frame.png';
-        a.click();
-        URL.revokeObjectURL(url);
-      }, 'image/png');
+      // Trigger download using data URL
+      const a = document.createElement('a');
+      a.href = dataURL;
+      a.download = 'last-frame.png';
+      a.click();
       
       console.log('Last frame extracted and download triggered');
     }
