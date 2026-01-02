@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Video Last Frame Extractor</title>
+</head>
+<body>
+  <input type="file" id="videoInput" accept="video/mp4">
+  <button id="extractBtn">Extract & Download</button>
+  <script type="module">
+    import * as MP4Box from 'https://cdn.jsdelivr.net/npm/mp4box@latest/dist/mp4box.all.js';
+    function buildAVCDescription(avcC) {
+      let size = 7; // Fixed header: version(1) + profile(1) + compat(1) + level(1) + lengthSize(1) + numSPS(1) + numPPS(1)
+      avcC.SPS.forEach(sps => size += 2 + sps.length);
+      avcC.PPS.forEach(pps => size += 2 + pps.length);
+      const buffer = new Uint8Array(size);
+      let pos = 0;
+      buffer[pos++] = 1; // configurationVersion
+      buffer[pos++] = avcC.AVCProfileIndication;
+      buffer[pos++] = avcC.profile_compatibility;
+      buffer[pos++] = avcC.AVCLevelIndication;
+      buffer[pos++] = 0xFC | avcC.lengthSizeMinusOne; // reserved(6)='111111'b + lengthSizeMinusOne(2)
+      buffer[pos++] = 0xE0 | avcC.SPS.length; // reserved(3)='111'b + numOfSequenceParameterSets(5)
+      avcC.SPS.forEach(sps => {
+        buffer[pos++] = (sps.length >> 8) & 0xFF;
+        buffer[pos++] = sps.length & 0xFF;
+        buffer.set(new Uint8Array(sps.data), pos);
+        pos += sps.length;
+      });
+      buffer[pos++] = avcC.PPS.length; // numOfPictureParameterSets (u8)
+      avcC.PPS.forEach(pps => {
+        buffer[pos++] = (pps.length >> 8) & 0xFF;
+        buffer[pos++] = pps.length & 0xFF;
+        buffer.set(new Uint8Array(pps.data), pos);
+        pos += pps.length;
+      });
+      return buffer;
+    }
+    async function extractLastFrame() {
+      const file = document.getElementById('videoInput').files[0];
+      if (!file) return alert('Select a video');
+      const arrayBuffer = await file.arrayBuffer();
+      const mp4boxFile = MP4Box.createFile();
+      let readyResolve;
+      const readyPromise = new Promise(resolve => readyResolve = resolve);
+      let fileInfo = null;
+      mp4boxFile.onReady = function(info) {
+        console.log('MP4 parsed, info:', info);
+        fileInfo = info;
+        mp4boxFile.flush();
+        readyResolve();
+      };
+      mp4boxFile.onError = function(e) {
+        console.error('MP4 parsing error:', e);
+        alert('MP4 parsing error: ' + e);
+      };
+      // Chunked append to ensure full data processing
+      const chunkSize = 1024 * 1024; // 1MB chunks
+      let offset = 0;
+      while (offset < arrayBuffer.byteLength) {
+        const length = Math.min(chunkSize, arrayBuffer.byteLength - offset);
+        const chunk = arrayBuffer.slice(offset, offset + length);
+        chunk.fileStart = offset;
+        mp4boxFile.appendBuffer(chunk);
+        console.log('Appended chunk at offset', offset, 'size:', length);
+        offset += length;
+      }
+      //mp4boxFile.flush();
+      console.log('All chunks appended and flush called');
+      // Wait for parsing to be ready
+      await readyPromise;
+      if (!fileInfo) return alert('Failed to parse MP4 info');
+      console.log('All tracks:', fileInfo.tracks.map(t => ({
+        id: t.id,
+        codec: t.codec,
+        type: t.type || (t.video ? 'Video' : (t.audio ? 'Audio' : 'Unknown')),
+        nb_samples: t.nb_samples
+      })));
+      const videoTrackInfo = fileInfo.videoTracks && fileInfo.videoTracks[0] || fileInfo.tracks.find(t => t.type === 'Video' || t.codec.startsWith('avc'));
+      if (!videoTrackInfo) {
+        console.log('No video track found');
+        return alert('No video track found');
+      }
+      const videoTrackId = videoTrackInfo.id;
+      console.log('Found video track ID:', videoTrackId, 'with codec:', videoTrackInfo.codec);
+      // Additional debug: Check if mdats are populated
+      console.log('MDAT boxes:', mp4boxFile.mdats.length);
+      mp4boxFile.mdats.forEach((mdat, i) => {
+        console.log(`MDAT #${i}: size=${mdat.size}, data=${mdat.data ? mdat.data.byteLength : 'undefined'}`);
+      });
+      const track = mp4boxFile.getTrackById(videoTrackId);
+      const avcC = track.mdia.minf.stbl.stsd.entries[0].avcC;
+      const description = buildAVCDescription(avcC);
+      const config = {
+        codec: videoTrackInfo.codec,
+        description
+      };
+      console.log('Decoder config:', config);
+      const decoder = new VideoDecoder({
+        output: handleFrame,
+        error: e => console.error('Decoder error:', e)
+      });
+      await decoder.configure(config);
+      console.log('Decoder configured');
+      let lastFrame = null;
+      function handleFrame(frame) {
+        console.log('Frame decoded:', frame.timestamp);
+        if (lastFrame) lastFrame.close();
+        lastFrame = frame;
+      }
+      const totalSamples = videoTrackInfo.nb_samples;
+      console.log('Expecting total samples:', totalSamples);
+      let receivedCount = 0;
+      const samplesPromise = new Promise(resolve => {
+        mp4boxFile.onSamples = function(id, user, samples) {
+          console.log('Samples batch received:', samples.length);
+          const timescale = videoTrackInfo.timescale;
+          samples.forEach(sample => {
+            const chunk = new EncodedVideoChunk({
+              type: sample.is_sync ? 'key' : 'delta',
+              timestamp: sample.cts * 1000000 / timescale,
+              duration: sample.duration * 1000000 / timescale,
+              data: sample.data
+            });
+            decoder.decode(chunk);
+            receivedCount++;
+            mp4boxFile.releaseUsedSamples(id, sample.number + 1);
+          });
+          console.log('Total samples so far:', receivedCount);
+          if (receivedCount >= totalSamples) {
+            console.log('All samples received');
+            decoder.flush().then(() => {
+              console.log('Flush complete');
+              if (!lastFrame) {
+                console.log('No frames decoded');
+                return alert('Failed to decode any frames');
+              }
+              console.log('Last frame ready:', lastFrame.displayWidth, 'x', lastFrame.displayHeight);
+              // Draw to canvas
+              const canvas = document.createElement('canvas');
+              canvas.width = lastFrame.displayWidth;
+              canvas.height = lastFrame.displayHeight;
+              canvas.style.border = '1px solid black'; // Basic styling for visibility
+              canvas.style.marginTop = '10px';
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(lastFrame, 0, 0);
+              lastFrame.close();
+              // Remove any previous canvas
+              const oldCanvas = document.querySelector('canvas');
+              if (oldCanvas) oldCanvas.remove();
+              // Append to body for visualization
+              document.body.appendChild(canvas);
+              // Download (still included)
+              canvas.toBlob(blob => {
+                if (!blob) {
+                  console.log('Blob creation failed');
+                  return alert('Failed to create image blob');
+                }
+                console.log('Blob created, size:', blob.size);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'last-frame.png';
+                a.click();
+                URL.revokeObjectURL(url);
+                console.log('Download triggered');
+              }, 'image/png');
+              resolve(); // Done
+            }).catch(e => console.error('Flush error:', e));
+          }
+        };
+      });
+      // Start extraction with smaller batch size
+      mp4boxFile.setExtractionOptions(videoTrackId, null, { nbSamples: 1 });
+      mp4boxFile.start();
+      console.log('Extraction started');
+      // Wait for extraction and decoding to complete
+      await samplesPromise;
+      console.log('Extraction complete');
+    }
+    document.getElementById('extractBtn').addEventListener('click', extractLastFrame);
+  </script>
+</body>
+</html>
