@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Video Last Frame Extractor</title>
+</head>
+<body>
+  <input type="file" id="videoInput" accept="video/mp4">
+  <button id="extractBtn">Extract & Download</button>
+  <script>
+    async function extractLastFrame() {
+      const file = document.getElementById('videoInput').files[0];
+      if (!file) return alert('Select a video');
+      
+      const video = document.createElement('video');
+      video.src = URL.createObjectURL(file);
+      video.preload = 'metadata'; // Only load metadata initially
+      
+      // Wait for metadata to load
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = resolve;
+        video.onerror = () => reject(new Error('Failed to load video metadata'));
+      });
+      
+      console.log('Video duration:', video.duration);
+      
+      // Seek to near the end (subtract a small epsilon for last frame)
+      video.currentTime = video.duration - 0.001;
+      
+      // Wait for seek to complete and frame to be ready
+      await new Promise((resolve, reject) => {
+        video.onseeked = () => {
+          // Ensure the frame is decoded by checking if video is ready
+          if (video.readyState >= video.HAVE_CURRENT_DATA) {
+            resolve();
+          } else {
+            video.oncanplay = resolve; // Fallback if not immediately ready
+          }
+        };
+        video.onerror = () => reject(new Error('Failed to seek video'));
+      });
+      
+      // Create canvas with video dimensions
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.style.border = '1px solid black';
+      canvas.style.marginTop = '10px';
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Clean up URL
+      URL.revokeObjectURL(video.src);
+      
+      // Remove old canvas if any
+      const oldCanvas = document.querySelector('canvas');
+      if (oldCanvas) oldCanvas.remove();
+      
+      // Append for visualization
+      document.body.appendChild(canvas);
+      
+      // Download as PNG
+      canvas.toBlob(blob => {
+        if (!blob) return alert('Failed to create image blob');
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'last-frame.png';
+        a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+      
+      console.log('Last frame extracted and download triggered');
+    }
+    
+    document.getElementById('extractBtn').addEventListener('click', extractLastFrame);
+  </script>
+</body>
+</html>
