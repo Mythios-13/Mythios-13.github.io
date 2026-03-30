@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Aurora Lab v3.4</title>
+  <title>Aurora Lab v3.4.rev1</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#58a6ff">
   <style>
@@ -147,7 +147,7 @@
 
 <div class="overlay" id="overlay"></div>
 <div class="sidebar" id="sidebar">
-  <div style="padding:10px 0px" >Aurora Lab <span style="font-size:12px;opacity:0.7;">v3.4</span></div>
+  <div style="padding:10px 0px" >Aurora Lab <span style="font-size:12px;opacity:0.7;">v3.4.rev1</span></div>
   <div class="menu-item" id="toggleTheme">🌙 Light / Dark</div>
   <div class="menu-item" onclick="showVariablesPage()">🔄 Variables Manager</div>
   <div class="menu-item" onclick="showTemplatesPage()">📋 Global Templates</div>
@@ -159,6 +159,7 @@
 <script>
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
+const localStorageID ="auroraProjectsV332";
 
 let projects = [];
 let globalTemplates = [];
@@ -169,7 +170,7 @@ let autoSaveTimeout = null;
 function uuid() { return 'x' + Math.random().toString(36).substr(2,9) + Date.now().toString(36); }
 
 function loadData() {
-  const saved = localStorage.getItem("auroraProjectsV34");
+  const saved = localStorage.getItem(localStorageID);
   if (saved) {
     const data = JSON.parse(saved);
     projects = data.projects || [];
@@ -188,7 +189,7 @@ function createDefaultProject() {
 }
 
 function saveData() {
-  localStorage.setItem("auroraProjectsV332", JSON.stringify({projects, globalTemplates}));
+  localStorage.setItem(localStorageID, JSON.stringify({projects, globalTemplates}));
   localStorage.setItem("currentProjectId", currentProjectId);
   localStorage.setItem("currentSceneId", currentSceneId);
 }
