@@ -735,12 +735,19 @@ window.showFileImport = () => {
             if (!confirm("⚠️ REPLACE ALL DATA?") || !confirm("LAST CHANCE – really wipe everything?")) return;
             projects = imported.projects || [];
             globalTemplates = imported.globalTemplates || [];
-            localStorage.setItem("currentProjectId", null);
-            localStorage.setItem("currentSceneId", null);
+            /* Erase current project and scene id, meaning less when import all */
+
+            currentProjectId = (projects[0]?.id || null);
+            currentSceneId = (projects[0]?.scenes[0]?.id || null);
+
+            localStorage.setItem("currentProjectId",currentProjectId);
+            localStorage.setItem("currentSceneId",currentSceneId);
           } else {
             projects = [...projects, ...(imported.projects || [])];
             globalTemplates = [...globalTemplates, ...(imported.globalTemplates || [])];
           }
+          // ← CRITICAL FIX: run migration on the newly imported data
+          migrateOldVariables();
         } else {
           // single project
           imported.id = uuid();
