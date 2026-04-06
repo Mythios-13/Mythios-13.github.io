@@ -316,9 +316,9 @@ function renderProjectsList() {
     <div class="project-list-item" onclick="switchProject('${p.id}');hideProjectsPage();">
       <div class="project-list-name">${p.name}</div>
       <div>
-        <button onclick="event.stopImmediatePropagation();renameProject('${p.id}');" style="background:#28a745;color:#fff;padding:6px 12px;border:none;border-radius:6px;font-size:13px;">Rename</button>
-        <button onclick="event.stopImmediatePropagation();duplicateProject('${p.id}');" style="background:#f2b824;color:#000;padding:6px 12px;border:none;border-radius:6px;font-size:13px;">Duplicate</button>
-        <button onclick="event.stopImmediatePropagation();deleteProject('${p.id}');" style="background:var(--danger);color:#fff;padding:6px 12px;border:none;border-radius:6px;font-size:13px;">Delete</button>
+        <button onclick="event.stopImmediatePropagation();renameProject('${p.id}');" style="background:#28a745;color:#fff;padding:6px 12px;border:none;border-radius:6px;font-size:13px;">Ren.</button>
+        <button onclick="event.stopImmediatePropagation();duplicateProject('${p.id}');" style="background:#f2b824;color:#000;padding:6px 12px;border:none;border-radius:6px;font-size:13px;">📋</button>
+        <button onclick="event.stopImmediatePropagation();deleteProject('${p.id}');" style="background:var(--danger);color:#fff;padding:6px 12px;border:none;border-radius:20px;font-size:13px;">🗑</button>
       </div>
     </div>
   `).join('');
