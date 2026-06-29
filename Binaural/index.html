@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mind Twister 3000</title>
+  <style>
+    body { font-family: monospace; background: #111; color: #0f0; padding: 2em; }
+    select, button, input[type=range] { margin: 0.5em; padding: 0.5em; background: #222; color: #0f0; border: 1px solid #0f0; }
+    #indicator { width: 100px; height: 100px; margin: 2em auto; border-radius: 50%; background: radial-gradient(circle, #0f0 0%, #003300 70%); opacity: 0.7; transition: all 0.3s ease; transform: scale(1); }
+  </style>
+</head>
+<body>
+  <h1>Mind Twister 3000</h1>
+
+  <p><strong>Brainwave Effects Summary:</strong></p>
+  <ul>
+    <li><strong>Delta (0.5–4 Hz):</strong> Deep sleep, unconsciousness, healing states.</li>
+    <li><strong>Theta (4–8 Hz):</strong> Light sleep, deep meditation, creativity, dreams.</li>
+    <li><strong>Alpha (8–14 Hz):</strong> Relaxed wakefulness, calm focus, readiness to learn.</li>
+    <li><strong>Beta (14–30 Hz):</strong> Active thinking, alertness, concentration, anxiety.</li>
+    <li><strong>Gamma (30–100 Hz):</strong> High-level cognition, problem-solving, peak focus.</li>
+  </ul>
+
+  <div>
+    <label>Noise Type:
+      <select id="noiseSelector">
+        <option value="none">None</option>
+        <option value="white">White</option>
+        <option value="pink">Pink</option>
+        <option value="brown">Brown</option>
+      </select>
+    </label>
+  </div>
+
+  <div>
+    <label>Brainwave Type:
+      <select id="waveSelector">
+        <option value="delta">Delta (0.5–4 Hz)</option>
+        <option value="lowtheta">low Theta (4 Hz)</option>
+        <option value="midtheta">mid Theta (6 Hz)</option>
+        <option value="hightheta">high Theta (8 Hz)</option>
+        <option value="alpha">Alpha (8–14 Hz)</option>
+        <option value="beta">Beta (14–30 Hz)</option>
+        <option value="gamma">Gamma (30–100 Hz)</option>
+      </select>
+    </label>
+  </div>
+
+  <div>
+    <label>Duration per Wave (seconds):
+      <input id="waveDuration" type="number" value="30">
+    </label>
+  </div>
+
+  <div>
+    <label>Base Frequency:
+      <input id="baseFreq" type="number" value="440">
+    </label>
+  </div>
+
+  <div>
+    <label>Gain:
+      <input id="gainSlider" type="range" min="0.01" max="0.2" step="0.01" value="0.04">
+    </label>
+  </div>
+
+  <div>
+    <button onclick="startMachine()">Start Mind Twist</button>
+    <button onclick="stopMachine()">Stop Mind Twist</button>
+  </div>
+
+  <div id="indicator"></div>
+
+  <script>
+    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let noiseSource, oscLeft, oscRight, timeout, indicatorInterval;
+
+    function generateNoise(type,waveDuration) {
+
+      if (type === 'none') {return;}
+
+      let bufferSize = 5 * audioCtx.sampleRate;
+      let noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      let output = noiseBuffer.getChannelData(0);
+      let b0, b1, b2, b3, b4, b5, b6, white;
+      b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+
+      for (let i = 0; i < bufferSize; i++) {
+        white = (Math.random() * 2 - 1);
+        if (type === 'white') {
+          output[i] = white;
+        } else if (type === 'pink') {
+          b0 = 0.99886 * b0 + white * 0.0555179;
+          b1 = 0.99332 * b1 + white * 0.0750759;
+          b2 = 0.96900 * b2 + white * 0.1538520;
+          b3 = 0.86650 * b3 + white * 0.3104856;
+          b4 = 0.55000 * b4 + white * 0.5329522;
+          b5 = -0.7616 * b5 - white * 0.0168980;
+          output[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+          output[i] *= 0.11;
+        } else if (type === 'brown') {
+          output[i] = (output[i-1] || 0) + (white) * 0.02;
+        }
+      }
+
+      let whiteNoise = audioCtx.createBufferSource();
+      whiteNoise.buffer = noiseBuffer;
+      whiteNoise.loop = true;
+      return whiteNoise;
+    }
+
+    function stopMachine() {
+      if (noiseSource) noiseSource.stop();
+      if (oscLeft) oscLeft.stop();
+      if (oscRight) oscRight.stop();
+      if (timeout) clearTimeout(timeout);
+      if (indicatorInterval) clearInterval(indicatorInterval);
+      document.getElementById('indicator').style.transform = 'scale(1)';
+      document.getElementById('indicator').style.opacity = '0.7';
+    }
+
+    function startMachine() {
+      stopMachine();
+
+      let noiseType = document.getElementById('noiseSelector').value;
+      let waveType = document.getElementById('waveSelector').value;
+      let waveDuration = parseInt(document.getElementById('waveDuration').value);
+      let gainValue = parseFloat(document.getElementById('gainSlider').value);
+      let noiseGain = audioCtx.createGain();
+      noiseGain.gain.value = gainValue * 5;
+      if (noiseType !== 'none') {
+        noiseSource = generateNoise(noiseType, waveDuration);
+        noiseGain = audioCtx.createGain();
+        noiseGain.gain.value = gainValue * (noiseType === 'pink' ? 2 : (noiseType === 'brown' ? 4 : 1));
+        noiseSource.connect(noiseGain).connect(audioCtx.destination);
+      }
+
+      let baseFrequency = parseInt(document.getElementById('baseFreq').value,10);
+      let beatFrequency;
+      switch (waveType) {
+        case 'delta': beatFrequency = 2; break;
+        case 'lowtheta': beatFrequency = 4; break;
+        case 'midtheta': beatFrequency = 6; break;
+        case 'hightheta': beatFrequency = 8; break;
+        case 'alpha': beatFrequency = 10; break;
+        case 'beta': beatFrequency = 20; break;
+        case 'gamma': beatFrequency = 40; break;
+      }
+
+      let leftFrequency = baseFrequency - beatFrequency / 2;
+      let rightFrequency = baseFrequency + beatFrequency / 2;
+
+      oscLeft = audioCtx.createOscillator();
+      oscRight = audioCtx.createOscillator();
+
+      oscLeft.frequency.value = leftFrequency;
+      oscRight.frequency.value = rightFrequency;
+
+      let pannerLeft = audioCtx.createStereoPanner();
+      pannerLeft.pan.value = -1;
+      let pannerRight = audioCtx.createStereoPanner();
+      pannerRight.pan.value = 1;
+
+      oscLeft.connect(pannerLeft).connect(noiseGain).connect(audioCtx.destination);
+      oscRight.connect(pannerRight).connect(noiseGain).connect(audioCtx.destination);
+
+      if (noiseType !== 'none') {
+        noiseSource.start();
+      }
+
+      oscLeft.start();
+      oscRight.start();
+
+      timeout = setTimeout(() => {
+        stopMachine();
+      }, waveDuration * 1000);
+
+      // Manual breathing indicator
+      const indicator = document.getElementById('indicator');
+      indicatorInterval = setInterval(() => {
+        if (indicator.style.transform === 'scale(1)') {
+          indicator.style.transform = 'scale(1.3)';
+          indicator.style.opacity = '1';
+        } else {
+          indicator.style.transform = 'scale(1)';
+          indicator.style.opacity = '0.7';
+        }
+      }, 1000 / beatFrequency);
+    }
+  </script>
+</body>
+</html>
