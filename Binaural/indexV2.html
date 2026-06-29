@@ -237,15 +237,21 @@
     <div class="card">
       <label for="waveSelector">Brainwave Target</label>
       <select id="waveSelector">
-        <option value="delta">Delta (0.5–4 Hz) — Deep Rest</option>
+        <option value="delta">Delta (2 Hz) — Deep Rest</option>
         <option value="lowtheta">Low Theta (4 Hz) — Creativity</option>
         <option value="midtheta">Mid Theta (6 Hz) — Meditation</option>
         <option value="hightheta">High Theta (8 Hz) — Insight</option>
-        <option value="alpha">Alpha (8–14 Hz) — Relaxed Focus</option>
-        <option value="beta">Beta (14–30 Hz) — Concentration</option>
-        <option value="gamma">Gamma (30–100 Hz) — Flow State</option>
+        <option value="alpha">Alpha (10 Hz) — Relaxed Focus</option>
+        <option value="beta">Beta (20 Hz) — Concentration</option>
+        <option value="gamma">Gamma (40 Hz) — Flow State</option>
+        <option value="custom">Custom</option>
       </select>
     </div>
+
+    <div class="card" id="customBeatDisplay" style="display:none">
+        <label for="customBeat">Custom beat (min 2 - max 1000)</label>
+        <input id="customBeat" type="number" value="40" min="2" max="1000">
+      </div>
 
     <div class="card">
       <label for="waveDuration">Duration per Session (seconds)</label>
@@ -339,6 +345,7 @@
       let waveDuration = parseInt(document.getElementById('waveDuration').value) || 60;
       const gainValue = parseFloat(document.getElementById('gainSlider').value);
       const baseFrequency = parseInt(document.getElementById('baseFreq').value);
+      const customBeatFrequency = parseInt(document.getElementById('customBeat').value);
 
       // Map wave types to beat frequencies
       let beatFrequency;
@@ -350,7 +357,7 @@
         case 'alpha': beatFrequency = 10; break;
         case 'beta': beatFrequency = 20; break;
         case 'gamma': beatFrequency = 40; break;
-        default: beatFrequency = 10;
+        default: beatFrequency = customBeatFrequency;
       }
 
       const leftFreq = baseFrequency;
@@ -413,6 +420,12 @@
 
     document.getElementById('gainSlider').addEventListener('input', function() {
       document.getElementById('gainValue').textContent = parseFloat(this.value).toFixed(2);
+    });
+
+    document.getElementById('customBeatDisplay').style.display = document.getElementById('waveSelector').value === 'custom' ? 'block' : 'none';
+    
+    document.getElementById('waveSelector').addEventListener('input', function() {
+      document.getElementById('customBeatDisplay').style.display = document.getElementById('waveSelector').value === 'custom' ? 'block' : 'none';
     });
 
     // Touch feedback
