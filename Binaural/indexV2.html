@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mind Twister 3000</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=SF+Mono:wght@400;500&display=swap');
+
+    :root {
+      --bg: #0a0a0f;
+      --card: rgba(20, 20, 35, 0.85);
+      --accent: #00f5ff;
+      --accent2: #7b2fff;
+      --text: #e0e0ff;
+      --text-muted: #a0a0cc;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(145deg, #0a0a0f 0%, #1a0033 100%);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      min-height: 100dvh;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .container {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    h1 {
+      font-size: 2.25rem;
+      font-weight: 600;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 1rem;
+      margin-top: 0.25rem;
+    }
+
+    .card {
+      background: var(--card);
+      backdrop-filter: blur(20px);
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    label {
+      display: block;
+      font-size: 0.95rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+      color: var(--text-muted);
+    }
+
+    select, input[type="number"], input[type="range"] {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      color: var(--text);
+      font-size: 1.05rem;
+      transition: all 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0, 245, 255, 0.15);
+    }
+
+    .range-container {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent);
+      background: transparent;
+    }
+
+    .value-display {
+      font-family: 'SF Mono', monospace;
+      font-size: 1.1rem;
+      min-width: 3.5rem;
+      text-align: right;
+      color: var(--accent);
+    }
+
+    button {
+      width: 100%;
+      padding: 18px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border-radius: 20px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.23, 1, 0.32, 1);
+      margin: 0.5rem 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(90deg, var(--accent), #00b8ff);
+      color: #000;
+    }
+
+    .btn-primary:active {
+      transform: scale(0.96);
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    .btn-secondary:active {
+      background: rgba(255,255,255,0.15);
+    }
+
+    #indicator {
+      width: 140px;
+      height: 140px;
+      margin: 2.5rem auto;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 30%, #a0ffff 0%, var(--accent) 40%, #003344 80%);
+      box-shadow: 
+        0 0 60px rgba(0, 245, 255, 0.6),
+        inset 0 0 40px rgba(255,255,255,0.3);
+      transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 2rem;
+      text-shadow: 0 0 20px rgba(0,0,0,0.6);
+    }
+
+    .info-section {
+      background: var(--card);
+      backdrop-filter: blur(20px);
+      border-radius: 20px;
+      padding: 1.25rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin-bottom: 2rem;
+    }
+
+    .info-section ul {
+      padding-left: 1.25rem;
+    }
+
+    .info-section li {
+      margin-bottom: 0.75rem;
+    }
+
+    .header-bar {
+      height: 44px;
+      background: rgba(10,10,15,0.8);
+      backdrop-filter: blur(20px);
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+  </style>
+</head>
+<body>
+  <div class="header-bar">
+    Mind Twister 3000
+  </div>
+
+  <div class="container" style="padding-top: 60px;">
+    <header>
+      <h1>Mind Twister</h1>
+      <p class="subtitle">Binaural Beats • Noise • Brainwave Entrainment</p>
+    </header>
+
+    <div class="info-section">
+      <strong>Brainwave Effects:</strong>
+      <ul style="margin: 0.75rem 0 0; padding-left: 1.1rem;">
+        <li><strong>Delta (0.5–4 Hz):</strong> Deep sleep, unconsciousness, healing states.</li>
+        <li><strong>Theta (4–8 Hz):</strong> Light sleep, deep meditation, creativity, dreams.</li>
+        <li><strong>Alpha (8–14 Hz):</strong> Relaxed wakefulness, calm focus, readiness to learn.</li>
+        <li><strong>Beta (14–30 Hz):</strong> Active thinking, alertness, concentration, anxiety.</li>
+        <li><strong>Gamma (30–100 Hz):</strong> High-level cognition, problem-solving, peak focus.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <label for="noiseSelector">Noise Type</label>
+      <select id="noiseSelector">
+        <option value="none">None</option>
+        <option value="white">White Noise</option>
+        <option value="pink">Pink Noise</option>
+        <option value="brown">Brown Noise</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <label for="waveSelector">Brainwave Target</label>
+      <select id="waveSelector">
+        <option value="delta">Delta (0.5–4 Hz) — Deep Rest</option>
+        <option value="lowtheta">Low Theta (4 Hz) — Creativity</option>
+        <option value="midtheta">Mid Theta (6 Hz) — Meditation</option>
+        <option value="hightheta">High Theta (8 Hz) — Insight</option>
+        <option value="alpha">Alpha (8–14 Hz) — Relaxed Focus</option>
+        <option value="beta">Beta (14–30 Hz) — Concentration</option>
+        <option value="gamma">Gamma (30–100 Hz) — Flow State</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <label for="waveDuration">Duration per Session (seconds)</label>
+      <input id="waveDuration" type="number" value="120" min="10" max="1800">
+    </div>
+
+    <div class="card">
+      <label>Base Frequency (Hz) (Low beat freq.)</label>
+      <div class="range-container">
+        <input id="baseFreq" type="number" min="100" max="800" value="440" step="1">
+      </div>
+    </div>
+
+    <div class="card">
+      <label>Gain / Intensity</label>
+      <div class="range-container">
+        <input id="gainSlider" type="range" min="0.01" max="0.3" step="0.01" value="0.08">
+        <span id="gainValue" class="value-display">0.08</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 2rem;">
+      <button onclick="startMachine()" class="btn-primary">
+        ▶️ Start Session
+      </button>
+      <button onclick="stopMachine()" class="btn-secondary">
+        ⏹️ Stop
+      </button>
+    </div>
+
+    <div id="indicator">🌌</div>
+
+    <div style="text-align: center; margin-top: 1rem; color: var(--text-muted); font-size: 0.85rem;">
+      Binaural beats work best with headphones
+    </div>
+  </div>
+
+  <script>
+    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let noiseSource, oscLeft, oscRight, timeout, indicatorInterval;
+
+    function generateNoise(type) {
+      if (type === 'none') return null;
+
+      const bufferSize = 8 * audioCtx.sampleRate;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      let b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+      let white;
+
+      for (let i = 0; i < bufferSize; i++) {
+        white = Math.random() * 2 - 1;
+        if (type === 'white') {
+          output[i] = white;
+        } else if (type === 'pink') {
+          b0 = 0.99886 * b0 + white * 0.0555179;
+          b1 = 0.99332 * b1 + white * 0.0750759;
+          b2 = 0.96900 * b2 + white * 0.1538520;
+          b3 = 0.86650 * b3 + white * 0.3104856;
+          b4 = 0.55000 * b4 + white * 0.5329522;
+          b5 = -0.7616 * b5 - white * 0.0168980;
+          output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+        } else if (type === 'brown') {
+          output[i] = ((output[i-1] || 0) + white * 0.02) * 0.85;
+        }
+      }
+
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = noiseBuffer;
+      noise.loop = true;
+      return noise;
+    }
+
+    function stopMachine() {
+      if (noiseSource) noiseSource.stop();
+      if (oscLeft) oscLeft.stop();
+      if (oscRight) oscRight.stop();
+      if (timeout) clearTimeout(timeout);
+      if (indicatorInterval) clearInterval(indicatorInterval);
+
+      const indicator = document.getElementById('indicator');
+      indicator.style.transform = 'scale(1)';
+      indicator.style.boxShadow = '0 0 60px rgba(0, 245, 255, 0.6)';
+    }
+
+    function startMachine() {
+      stopMachine();
+
+      const noiseType = document.getElementById('noiseSelector').value;
+      const waveType = document.getElementById('waveSelector').value;
+      let waveDuration = parseInt(document.getElementById('waveDuration').value) || 60;
+      const gainValue = parseFloat(document.getElementById('gainSlider').value);
+      const baseFrequency = parseInt(document.getElementById('baseFreq').value);
+
+      // Map wave types to beat frequencies
+      let beatFrequency;
+      switch (waveType) {
+        case 'delta': beatFrequency = 2; break;
+        case 'lowtheta': beatFrequency = 4; break;
+        case 'midtheta': beatFrequency = 6; break;
+        case 'hightheta': beatFrequency = 8; break;
+        case 'alpha': beatFrequency = 10; break;
+        case 'beta': beatFrequency = 20; break;
+        case 'gamma': beatFrequency = 40; break;
+        default: beatFrequency = 10;
+      }
+
+      const leftFreq = baseFrequency;
+      const rightFreq = baseFrequency + beatFrequency;
+
+      // Noise
+      if (noiseType !== 'none') {
+        noiseSource = generateNoise(noiseType);
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.value = gainValue * (noiseType === 'pink' ? 3 : noiseType === 'brown' ? 6 : 0.5);
+        noiseSource.connect(noiseGain).connect(audioCtx.destination);
+        noiseSource.start();
+      }
+
+      // Oscillators
+      oscLeft = audioCtx.createOscillator();
+      oscRight = audioCtx.createOscillator();
+      oscLeft.frequency.setValueAtTime(leftFreq, audioCtx.currentTime);
+      oscRight.frequency.setValueAtTime(rightFreq, audioCtx.currentTime);
+
+      const gainNode = audioCtx.createGain();
+      if (noiseType !== 'none') {
+        gainNode.gain.value = gainValue * 1.5;
+      } else {
+        gainNode.gain.value = gainValue * 4;
+      }
+
+      const pannerLeft = audioCtx.createStereoPanner();
+      pannerLeft.pan.value = -1;
+      const pannerRight = audioCtx.createStereoPanner();
+      pannerRight.pan.value = 1;
+
+      oscLeft.connect(pannerLeft).connect(gainNode);
+      oscRight.connect(pannerRight).connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscLeft.start();
+      oscRight.start();
+
+      // Auto-stop
+      timeout = setTimeout(() => {
+        stopMachine();
+      }, waveDuration * 1000);
+
+      // Pulsing indicator synced to beat
+      const indicator = document.getElementById('indicator');
+      let pulseState = false;
+
+      indicatorInterval = setInterval(() => {
+        pulseState = !pulseState;
+        if (pulseState) {
+          indicator.style.transform = 'scale(1.15)';
+          indicator.style.boxShadow = '0 0 80px rgba(123, 47, 255, 0.9)';
+        } else {
+          indicator.style.transform = 'scale(1)';
+          indicator.style.boxShadow = '0 0 60px rgba(0, 245, 255, 0.6)';
+        }
+      }, 1000 / (beatFrequency * 1.5)); // Slightly slower visual pulse
+    }
+
+    document.getElementById('gainSlider').addEventListener('input', function() {
+      document.getElementById('gainValue').textContent = parseFloat(this.value).toFixed(2);
+    });
+
+    // Touch feedback
+    document.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('touchstart', () => {
+        btn.style.transform = 'scale(0.95)';
+      });
+      btn.addEventListener('touchend', () => {
+        btn.style.transform = '';
+      });
+    });
+  </script>
+</body>
+</html>
