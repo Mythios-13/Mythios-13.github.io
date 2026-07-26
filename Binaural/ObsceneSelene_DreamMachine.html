@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="Obscene Selene">
+    <meta name="description" content="Obscene Selene's Dream machine v2.0">
+    <title>Gateway Synthesizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&family=Fira+Code:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050505;
+            color: #e5e7eb;
+            background-image: 
+                radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.08) 0%, transparent 50%),
+                linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+            background-size: 100% 100%, 40px 40px, 40px 40px;
+            background-attachment: fixed;
+            overflow-x: hidden;
+        }
+        
+        .font-display { font-family: 'Orbitron', sans-serif; }
+        .font-mono { font-family: 'Fira Code', monospace; }
+
+        .neon-border {
+            box-shadow: 0 0 20px rgba(34, 211, 238, 0.1), inset 0 0 20px rgba(34, 211, 238, 0.05);
+            border: 1px solid rgba(34, 211, 238, 0.3);
+        }
+
+        .neon-text { text-shadow: 0 0 15px rgba(34, 211, 238, 0.5); }
+        .text-shadow-pink { text-shadow: 0 0 15px rgba(236, 72, 153, 0.5); }
+
+        .glass-panel {
+            background: rgba(10, 10, 12, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8);
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+            width: 100%;
+        }
+        input[type=range]:focus { outline: none; }
+        
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 6px; cursor: pointer;
+            background: #1f2937; border-radius: 3px; border: 1px solid #374151;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 18px; width: 18px; border-radius: 50%;
+            background: #22d3ee; cursor: pointer; -webkit-appearance: none;
+            margin-top: -7px; box-shadow: 0 0 12px #22d3ee;
+            transition: all 0.2s ease;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.2); background: #fff; box-shadow: 0 0 15px #fff;
+        }
+        
+        input[type=range].slider-pink::-webkit-slider-thumb {
+            background: #ec4899; box-shadow: 0 0 12px #ec4899;
+        }
+        
+        input[type=range].slider-purple::-webkit-slider-thumb {
+            background: #a855f7; box-shadow: 0 0 12px #a855f7;
+        }
+        
+        input[type=range].slider-gray::-webkit-slider-thumb {
+            background: #9ca3af; box-shadow: 0 0 10px #6b7280;
+        }
+
+        .preset-btn { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .preset-btn:hover:not(:disabled) {
+            background-color: rgba(34, 211, 238, 0.1);
+            border-color: #22d3ee;
+            box-shadow: inset 0 0 15px rgba(34, 211, 238, 0.2);
+        }
+        .preset-btn.active {
+            background-color: rgba(34, 211, 238, 0.2);
+            border-color: #22d3ee;
+            color: #22d3ee;
+            box-shadow: inset 0 0 20px rgba(34, 211, 238, 0.4), 0 0 10px rgba(34, 211, 238, 0.2);
+        }
+
+        .disabled-overlay {
+            position: absolute; inset: 0; background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(2px); z-index: 50;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        .is-automating .disabled-overlay { opacity: 1; pointer-events: all; }
+        #visualizer { filter: drop-shadow(0 0 10px rgba(34,211,238,0.2)); }
+        
+        /* Toggle Switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #22d3ee;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #22d3ee;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-6 px-4 md:px-8">
+
+    <!-- Ganzfeld Fullscreen Overlay -->
+    <div id="ganzfeldOverlay" class="fixed inset-0 bg-red-600 z-[100] hidden flex-col items-center justify-center cursor-pointer transition-opacity duration-300">
+        <div class="text-white font-mono opacity-50 mb-4 tracking-widest text-sm">GANZFELD ACTIVE // CLICK ANYWHERE TO EXIT</div>
+        <div class="text-white font-display text-4xl font-bold tracking-[0.2em] opacity-30" id="ganzfeldHz">4.0 HZ</div>
+    </div>
+
+    <main class="w-full max-w-7xl flex flex-col gap-6">
+        
+        <header class="text-center space-y-3 mb-2 relative">
+            <h1 class="text-4xl md:text-5xl font-bold tracking-[0.15em] text-cyan-400 neon-text font-display uppercase flex items-center justify-center gap-4">
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-cyan-400"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                Gateway Engine
+            </h1>
+            <p class="text-gray-400 text-xs md:text-sm font-mono tracking-[0.25em] uppercase">Advanced Binaural & Isochronic Synthesis</p>
+            
+            <div class="pt-4 flex justify-center gap-4">
+                <button id="btnMasterToggle" class="relative group inline-flex items-center gap-3 px-8 py-3 bg-cyan-950/30 hover:bg-cyan-900/50 text-cyan-300 font-display text-sm tracking-[0.2em] rounded-lg border border-cyan-500/50 transition-all cursor-pointer shadow-[0_0_20px_rgba(34,211,238,0.15)] hover:shadow-[0_0_30px_rgba(34,211,238,0.3)] overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/10 to-cyan-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+                    <svg id="iconPlay" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" class="text-cyan-400 z-10"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    <span id="lblMasterToggle" class="z-10">INITIALIZE SESSION</span>
+                </button>
+
+                <button id="btnGanzfeld" class="hidden relative group inline-flex items-center gap-2 px-6 py-3 bg-red-950/30 hover:bg-red-900/50 text-red-400 font-display text-sm tracking-[0.2em] rounded-lg border border-red-500/50 transition-all cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    GANZFELD
+                </button>
+            </div>
+        </header>
+
+        <div class="relative w-full h-64 md:h-80 bg-[#050507] rounded-2xl neon-border overflow-hidden flex items-center justify-center shadow-2xl group">
+            <div class="absolute inset-0 bg-gradient-to-b from-transparent to-cyan-900/10 pointer-events-none"></div>
+            
+            <canvas id="visualizer" class="absolute inset-0 w-full h-full"></canvas>
+            
+            <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none opacity-60"></div>
+            <div class="absolute top-1/2 left-0 w-full h-[1px] bg-cyan-500/20 pointer-events-none"></div>
+
+            <div class="absolute top-4 left-4 flex flex-col gap-3 z-10 pointer-events-none">
+                <div class="bg-black/70 px-4 py-2 rounded-lg backdrop-blur-md border border-gray-800/80 flex items-center gap-3 shadow-lg">
+                    <div class="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]"></div>
+                    <div class="font-mono text-xs text-gray-400 tracking-wider">LEFT <span id="lblLeftFreq" class="text-white font-bold ml-2 w-16 inline-block">100.0 Hz</span></div>
+                </div>
+                <div class="bg-black/70 px-4 py-2 rounded-lg backdrop-blur-md border border-gray-800/80 flex items-center gap-3 shadow-lg">
+                    <div class="w-2 h-2 rounded-full bg-pink-500 shadow-[0_0_8px_#ec4899]"></div>
+                    <div class="font-mono text-xs text-gray-400 tracking-wider">RIGHT <span id="lblRightFreq" class="text-white font-bold ml-2 w-16 inline-block">104.0 Hz</span></div>
+                </div>
+            </div>
+            
+            <div class="absolute top-4 right-4 z-10 pointer-events-none">
+                <div class="bg-black/80 px-5 py-3 rounded-lg backdrop-blur-md border border-cyan-900/50 shadow-[0_0_15px_rgba(34,211,238,0.1)] flex flex-col items-end">
+                    <div class="flex items-center gap-2 mb-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-cyan-500"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        <span class="text-[10px] font-display text-cyan-500 tracking-widest">SESSION TIME</span>
+                    </div>
+                    <div class="font-mono text-xl text-white font-bold tracking-widest" id="lblTimer">00:00:00</div>
+                </div>
+            </div>
+
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 pointer-events-none flex flex-col items-center gap-2">
+                <div id="statusBadge" class="hidden bg-pink-500/20 text-pink-400 border border-pink-500/50 px-3 py-1 rounded-full text-[10px] font-display tracking-widest uppercase items-center gap-2 backdrop-blur-md">
+                    <span class="w-2 h-2 rounded-full bg-pink-400 animate-pulse"></span>
+                    Journey Active
+                </div>
+                <div class="bg-black/80 px-6 py-2 rounded-full backdrop-blur-md border border-gray-700/50 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-pink-400"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+                    <span class="text-xs font-display text-gray-400 tracking-widest">BEAT OFFSET:</span>
+                    <span id="lblOffsetDisplay" class="text-pink-400 font-bold font-mono text-lg text-shadow-pink w-16 text-right">4.0 Hz</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full" id="controlsContainer">
+            
+            <!-- Audio Mixer Panel -->
+            <div class="glass-panel p-6 rounded-2xl flex flex-col gap-5 relative">
+                <div class="flex items-center gap-3 border-b border-gray-700/50 pb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-cyan-400"><path d="M12 20V10"></path><path d="M18 20V4"></path><path d="M6 20v-4"></path></svg>
+                    <h3 class="text-cyan-400 font-display text-sm tracking-[0.15em]">AUDIO MIXER</h3>
+                </div>
+                
+                <div class="space-y-3 z-10">
+                    <div class="flex justify-between font-mono text-xs text-gray-400">
+                        <span class="flex items-center gap-2 uppercase">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                            Master Output
+                        </span>
+                        <span id="valMaster" class="text-cyan-400 font-bold">50%</span>
+                    </div>
+                    <input type="range" id="slMaster" class="relative z-10 cursor-pointer" min="0" max="100" value="50">
+                </div>
+
+                <div class="space-y-3 pt-2 z-10">
+                    <div class="flex justify-between font-mono text-xs text-gray-400">
+                        <span class="flex items-center gap-2 uppercase">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                            Carrier Tone
+                        </span>
+                        <span id="valCarrier" class="text-cyan-400 font-bold">50%</span>
+                    </div>
+                    <input type="range" id="slCarrier" class="relative z-10 cursor-pointer" min="0" max="100" value="50">
+                </div>
+
+                <div class="space-y-3 pt-2 z-10">
+                    <div class="flex justify-between font-mono text-xs text-gray-400">
+                        <span class="flex items-center gap-2 uppercase">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.9 19.1C3.1 17.3 2 14.8 2 12s1.1-5.3 2.9-7.1"/><path d="M19.1 4.9C20.9 6.7 22 9.2 22 12s-1.1 5.3-2.9 7.1"/><path d="M8.5 15.5C7.5 14.6 7 13.4 7 12s.5-2.6 1.5-3.5"/><path d="M15.5 8.5c1 .9 1.5 2.1 1.5 3.5s-.5 2.6-1.5 3.5"/><circle cx="12" cy="12" r="2"/></svg>
+                            Pink Noise Bed
+                        </span>
+                        <span id="valNoise" class="text-gray-300 font-bold">0%</span>
+                    </div>
+                    <input type="range" id="slNoise" class="slider-gray relative z-10 cursor-pointer" min="0" max="100" value="0">
+                </div>
+
+                <!-- Advanced Toggles -->
+                <div class="mt-2 pt-4 border-t border-gray-700/50 flex flex-col gap-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex flex-col">
+                            <span class="text-xs font-mono text-gray-300 uppercase">Isochronic Pulse</span>
+                            <span class="text-[9px] text-gray-500 font-display tracking-widest">AMPLITUDE MODULATION</span>
+                        </div>
+                        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" name="toggle" id="toggleIsochronic" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 border-gray-600"/>
+                            <label for="toggleIsochronic" class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-600 cursor-pointer"></label>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <div class="flex flex-col">
+                            <span class="text-xs font-mono text-gray-300 uppercase">Spatial Orbit</span>
+                            <span class="text-[9px] text-gray-500 font-display tracking-widest">3D NOISE PANNING</span>
+                        </div>
+                        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" name="toggle" id="toggleOrbit" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 border-gray-600"/>
+                            <label for="toggleOrbit" class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-600 cursor-pointer"></label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manual Tone Panel -->
+            <div class="glass-panel p-6 rounded-2xl flex flex-col gap-5 relative" id="panelManual">
+                <div class="disabled-overlay rounded-2xl flex-col gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-pink-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    <span class="text-xs font-display text-pink-400 tracking-widest">LOCKED BY AUTOMATION</span>
+                </div>
+
+                <div class="flex items-center gap-3 border-b border-gray-700/50 pb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-purple-400"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>
+                    <h3 class="text-purple-400 font-display text-sm tracking-[0.15em]">TARGET FREQUENCY</h3>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="flex justify-between font-mono text-xs text-gray-400">
+                        <span class="flex items-center gap-2 uppercase">Base Carrier</span>
+                        <span id="valBaseFreq" class="text-purple-400 font-bold">100 Hz</span>
+                    </div>
+                    <input type="range" id="slBaseFreq" class="slider-purple relative z-10" min="60" max="250" value="100" step="1">
+                </div>
+
+                <div class="space-y-4 pt-2">
+                    <div class="flex justify-between font-mono text-xs text-gray-400">
+                        <span class="flex items-center gap-2 uppercase">Manual Target Offset</span>
+                        <span id="valOffset" class="text-pink-400 font-bold">4.0 Hz</span>
+                    </div>
+                    <input type="range" id="slOffset" class="slider-pink relative z-10" min="0.5" max="15" value="4.0" step="0.1">
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4">
+                    <button class="preset-btn flex flex-col bg-gray-900/60 border border-gray-700/80 text-left p-3 rounded-xl group relative overflow-hidden" data-offset="4">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-blue-500/50 group-hover:bg-blue-400 transition-colors"></div>
+                        <span class="font-display text-xs text-gray-200 font-bold tracking-widest uppercase pl-2">Focus 10</span>
+                        <span class="text-[9px] text-gray-400 font-mono uppercase tracking-wider pl-2 mt-1">Body Asleep</span>
+                    </button>
+                    
+                    <button class="preset-btn flex flex-col bg-gray-900/60 border border-gray-700/80 text-left p-3 rounded-xl group relative overflow-hidden" data-offset="2">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-purple-500/50 group-hover:bg-purple-400 transition-colors"></div>
+                        <span class="font-display text-xs text-gray-200 font-bold tracking-widest uppercase pl-2">Focus 12</span>
+                        <span class="text-[9px] text-gray-400 font-mono uppercase tracking-wider pl-2 mt-1">Expanded State</span>
+                    </button>
+
+                    <button class="preset-btn flex flex-col bg-gray-900/60 border border-gray-700/80 text-left p-3 rounded-xl group relative overflow-hidden" data-offset="1">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-pink-500/50 group-hover:bg-pink-400 transition-colors"></div>
+                        <span class="font-display text-xs text-gray-200 font-bold tracking-widest uppercase pl-2">Focus 15</span>
+                        <span class="text-[9px] text-gray-400 font-mono uppercase tracking-wider pl-2 mt-1">No Time</span>
+                    </button>
+
+                    <button class="preset-btn flex flex-col bg-gray-900/60 border border-gray-700/80 text-left p-3 rounded-xl group relative overflow-hidden" data-offset="0.5">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-red-500/50 group-hover:bg-red-400 transition-colors"></div>
+                        <span class="font-display text-xs text-gray-200 font-bold tracking-widest uppercase pl-2">Focus 21</span>
+                        <span class="text-[9px] text-gray-400 font-mono uppercase tracking-wider pl-2 mt-1">The Bridge</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dynamic Protocols Panel -->
+            <div class="glass-panel p-6 rounded-2xl flex flex-col gap-4 border-pink-900/30 transition-all duration-500 relative" id="panelJourney">
+                
+                <!-- WBTB Sleeping Overlay -->
+                <div id="wbtbOverlay" class="absolute inset-0 bg-black/90 backdrop-blur-md z-40 hidden flex-col items-center justify-center rounded-2xl border border-cyan-500/30">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-cyan-400 mb-4 animate-pulse"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                    <div class="text-xs font-display text-cyan-400 tracking-widest mb-1" id="wbtbStatusText">WBTB SLEEP DELAY</div>
+                    <div class="text-2xl font-mono text-white font-bold" id="wbtbCountdown">00:00:00</div>
+                    <button id="btnCancelWbtb" class="mt-6 text-[10px] font-display text-gray-500 hover:text-white transition-colors tracking-widest border border-gray-700 hover:border-gray-500 px-4 py-2 rounded">ABORT WBTB</button>
+                </div>
+
+                <div class="flex items-center justify-between border-b border-gray-700/50 pb-4">
+                    <div class="flex items-center gap-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-pink-400"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                        <h3 class="text-pink-400 font-display text-sm tracking-[0.15em]">DYNAMIC PROTOCOLS</h3>
+                    </div>
+                    <button id="btnHalt" class="hidden text-[10px] font-display bg-red-950/80 text-red-400 border border-red-500/50 px-3 py-1 rounded shadow-[0_0_10px_rgba(239,68,68,0.2)] hover:bg-red-900 transition-colors cursor-pointer z-20">HALT SEQUENCE</button>
+                </div>
+
+                <div class="space-y-3">
+                    <div class="flex justify-between font-mono text-xs text-gray-400">
+                        <span class="flex items-center gap-2 uppercase">Total Duration</span>
+                        <span id="valDuration" class="text-white font-bold">3 Hours</span>
+                    </div>
+                    <input type="range" id="slDuration" class="slider-gray relative z-10" min="5" max="600" value="180" step="5">
+                </div>
+
+                <!-- Custom Protocol Target (Hidden normally) -->
+                <div id="customTargetDiv" class="hidden space-y-3 bg-gray-900/50 p-3 rounded-lg border border-emerald-500/20">
+                    <div class="flex justify-between font-mono text-xs text-emerald-400">
+                        <span class="flex items-center gap-2 uppercase">Custom Target Hz</span>
+                        <span id="valCustomHz" class="font-bold">4.0 Hz</span>
+                    </div>
+                    <input type="range" id="slCustomHz" class="slider-gray relative z-10" min="0.5" max="12" value="4.0" step="0.1">
+                </div>
+
+                <!-- Protocol Selector List (Injected by JS) -->
+                <div class="flex flex-col gap-2 pt-1 h-32 overflow-y-auto pr-1" id="protocolList">
+                </div>
+                
+                <!-- WBTB Slider -->
+                <div class="space-y-3 pt-3 border-t border-gray-800" id="wbtbControls">
+                    <div class="flex justify-between font-mono text-xs text-gray-400">
+                        <span class="flex items-center gap-2 uppercase">WBTB Alarm Delay</span>
+                        <span id="valWbtb" class="text-cyan-400 font-bold">OFF</span>
+                    </div>
+                    <input type="range" id="slWbtb" class="slider-cyan relative z-10" min="0" max="480" value="0" step="15">
+                </div>
+                
+                <!-- Active Execution Timeline (Hidden until sequence starts) -->
+                <div id="executionView" class="hidden flex-col gap-3 pt-3 border-t border-gray-700/50 mt-1">
+                    <div class="flex justify-between items-end">
+                        <div class="flex flex-col">
+                            <span class="text-[9px] font-display text-gray-500 tracking-widest">ACTIVE PHASE</span>
+                            <span id="lblCurrentPhase" class="text-xs font-mono font-bold text-pink-400 uppercase tracking-widest">INDUCTION</span>
+                        </div>
+                        <div class="flex flex-col items-end">
+                            <span class="text-[9px] font-display text-gray-500 tracking-widest">PHASE TIME</span>
+                            <span id="lblPhaseTime" class="text-xs font-mono font-bold text-white tracking-widest">00:00</span>
+                        </div>
+                    </div>
+                    <div class="relative w-full h-3 bg-gray-900 rounded-full overflow-hidden border border-gray-700/50 shadow-inner">
+                        <div id="timelineSegments" class="absolute inset-0 flex opacity-30"></div>
+                        <div id="timelineProgress" class="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-pink-600 to-cyan-400 w-0 transition-all duration-100 ease-linear shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
+                    </div>
+                </div>
+
+                <button id="btnStartSequence" class="w-full mt-2 py-3 bg-gray-800/80 hover:bg-pink-900/30 border border-gray-600 hover:border-pink-500/50 text-gray-300 hover:text-pink-400 rounded-lg font-display tracking-[0.2em] text-xs transition-all shadow-lg cursor-pointer">
+                    INITIATE SEQUENCE
+                </button>
+            </div>
+        </div>
+        <footer>
+            <h6 class="text-1xl md:text-1xl font-bold tracking-[0.15em] text-emerald-400 neon-text font-display uppercase flex items-center justify-center gap-4">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" class="text-emerald-400"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                Slopped by <a href="https://x.com/ObsceneSelene?s=20" target="_blank">@ObsceneSelene</a>
+            </h6>
+        </footer>
+    </main>
+
+    <script>
+        // State Variables
+        let isPlaying = false;
+        let isJourneyActive = false;
+        let baseFreq = 100;
+        let currentOffset = 4.0;
+        let isIsochronic = false;
+        let isOrbitActive = false;
+        let isGanzfeldActive = false;
+        
+        // Timer Variables
+        let sessionStartTime = 0;
+        let timerInterval = null;
+        
+        // Automation Variables
+        let journeyStartTime = 0;
+        let journeyDurationMs = 0;
+        let journeyAnimationFrame = null;
+        let activeProtocolId = 'wave1';
+        let computedPhases = [];
+        
+        // WBTB Variables
+        let wbtbDelayMs = 0;
+        let wbtbInterval = null;
+        let wbtbEndTime = 0;
+        
+        const gatewayProtocols = {
+            wave1: {
+                id: 'wave1', name: "WAVE I // FOCUS 10", desc: "Mind Awake / Body Asleep.",
+                color: "text-blue-400", border: "border-blue-500/30", bg: "bg-blue-500/10",
+                phases: [
+                    { name: "Alpha Induction", start: 14.0, end: 8.0, pct: 15 },
+                    { name: "Theta Descent", start: 8.0, end: 4.0, pct: 15 },
+                    { name: "Focus 10 Hold", start: 4.0, end: 4.0, pct: 60 },
+                    { name: "Beta Return", start: 4.0, end: 16.0, pct: 10 }
+                ]
+            },
+            wave2: {
+                id: 'wave2', name: "WAVE II // FOCUS 12", desc: "Expanded Awareness.",
+                color: "text-purple-400", border: "border-purple-500/30", bg: "bg-purple-500/10",
+                phases: [
+                    { name: "F10 Establishment", start: 10.0, end: 4.0, pct: 15 },
+                    { name: "Spatial Expansion", start: 4.0, end: 2.0, pct: 20 },
+                    { name: "Focus 12 Hold", start: 2.0, end: 2.0, pct: 55 },
+                    { name: "Beta Return", start: 2.0, end: 16.0, pct: 10 }
+                ]
+            },
+            wave3: {
+                id: 'wave3', name: "WAVE III // FOCUS 15", desc: "State of No Time.",
+                color: "text-pink-400", border: "border-pink-500/30", bg: "bg-pink-500/10",
+                phases: [
+                    { name: "Rapid Descent", start: 8.0, end: 2.0, pct: 15 },
+                    { name: "Void Entry", start: 2.0, end: 1.0, pct: 20 },
+                    { name: "Focus 15 Hold", start: 1.0, end: 1.0, pct: 55 },
+                    { name: "Beta Return", start: 1.0, end: 16.0, pct: 10 }
+                ]
+            },
+            wave4: {
+                id: 'wave4', name: "WAVE IV // FOCUS 21", desc: "The Bridge State.",
+                color: "text-red-400", border: "border-red-500/30", bg: "bg-red-500/10",
+                phases: [
+                    { name: "Deep Freefall", start: 4.0, end: 0.5, pct: 25 },
+                    { name: "The Bridge Hold", start: 0.5, end: 0.5, pct: 65 },
+                    { name: "Beta Return", start: 0.5, end: 16.0, pct: 10 }
+                ]
+            },
+            custom: {
+                id: 'custom', name: "CUSTOM JOURNEY", desc: "User defined trajectory.",
+                color: "text-emerald-400", border: "border-emerald-500/30", bg: "bg-emerald-500/10",
+                phases: [
+                    { name: "Induction", start: 14.0, end: 4.0, pct: 20 },
+                    { name: "Deepening", start: 4.0, end: 4.0, pct: 20 },
+                    { name: "Custom Hold", start: 4.0, end: 4.0, pct: 50 },
+                    { name: "Beta Return", start: 4.0, end: 16.0, pct: 10 }
+                ]
+            }
+        };
+
+        // Audio Engine Variables
+        let audioCtx;
+        let masterGain;
+        
+        let carrierGain;
+        let oscL, oscR;
+        let panL, panR;
+        
+        // Isochronic Modulators
+        let amGain;
+        let amOsc, amOscGain;
+        
+        // Visualizers
+        let analyserL, analyserR;
+        
+        // Pink Noise & Orbit
+        let noiseSource, noiseGain, noisePan;
+        let orbitOsc, orbitGain;
+
+        // UI Elements
+        const btnMasterToggle = document.getElementById('btnMasterToggle');
+        const lblMasterToggle = document.getElementById('lblMasterToggle');
+        const iconPlay = document.getElementById('iconPlay');
+        const visualizer = document.getElementById('visualizer');
+        const canvasCtx = visualizer.getContext('2d');
+        
+        const slMaster = document.getElementById('slMaster');
+        const valMaster = document.getElementById('valMaster');
+        const slCarrier = document.getElementById('slCarrier');
+        const valCarrier = document.getElementById('valCarrier');
+        const slNoise = document.getElementById('slNoise');
+        const valNoise = document.getElementById('valNoise');
+        
+        const toggleIsochronic = document.getElementById('toggleIsochronic');
+        const toggleOrbit = document.getElementById('toggleOrbit');
+        const btnGanzfeld = document.getElementById('btnGanzfeld');
+        const ganzfeldOverlay = document.getElementById('ganzfeldOverlay');
+        
+        const slBaseFreq = document.getElementById('slBaseFreq');
+        const valBaseFreq = document.getElementById('valBaseFreq');
+        const slOffset = document.getElementById('slOffset');
+        const valOffset = document.getElementById('valOffset');
+        
+        const slDuration = document.getElementById('slDuration');
+        const valDuration = document.getElementById('valDuration');
+        const slCustomHz = document.getElementById('slCustomHz');
+        const valCustomHz = document.getElementById('valCustomHz');
+        const slWbtb = document.getElementById('slWbtb');
+        const valWbtb = document.getElementById('valWbtb');
+        
+        const lblLeftFreq = document.getElementById('lblLeftFreq');
+        const lblRightFreq = document.getElementById('lblRightFreq');
+        const lblOffsetDisplay = document.getElementById('lblOffsetDisplay');
+        const lblTimer = document.getElementById('lblTimer');
+        
+        const panelManual = document.getElementById('panelManual');
+        const statusBadge = document.getElementById('statusBadge');
+        const btnHalt = document.getElementById('btnHalt');
+        const presetBtns = document.querySelectorAll('.preset-btn');
+
+        function resizeCanvas() {
+            visualizer.width = visualizer.clientWidth;
+            visualizer.height = visualizer.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function initAudioEngine() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Master Volume
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = slMaster.value / 100;
+            masterGain.connect(audioCtx.destination);
+
+            // Carrier Tone Submix
+            carrierGain = audioCtx.createGain();
+            carrierGain.gain.value = slCarrier.value / 100;
+
+            // AM (Isochronic) Gain Stage
+            // AM math: output = signal * (1 + depth * sin(wt)) / 2 (approximated)
+            amGain = audioCtx.createGain();
+            amGain.gain.value = 1; // Default to pure bypass
+            carrierGain.connect(amGain);
+            amGain.connect(masterGain);
+
+            amOsc = audioCtx.createOscillator();
+            amOsc.type = 'sine';
+            amOscGain = audioCtx.createGain();
+            amOscGain.gain.value = 0; // Default off
+            
+            amOsc.connect(amOscGain);
+            amOscGain.connect(amGain.gain);
+            amOsc.start();
+
+            // Analysers
+            analyserL = audioCtx.createAnalyser();
+            analyserR = audioCtx.createAnalyser();
+            analyserL.fftSize = 2048;
+            analyserR.fftSize = 2048;
+
+            // Tone Oscillators
+            oscL = audioCtx.createOscillator();
+            oscR = audioCtx.createOscillator();
+            oscL.type = 'sine';
+            oscR.type = 'sine';
+
+            // Panning
+            panL = audioCtx.createStereoPanner();
+            panR = audioCtx.createStereoPanner();
+            panL.pan.value = -1; 
+            panR.pan.value = 1;
+
+            oscL.connect(panL);
+            panL.connect(analyserL);
+            analyserL.connect(carrierGain);
+
+            oscR.connect(panR);
+            panR.connect(analyserR);
+            analyserR.connect(carrierGain);
+
+            setupPinkNoise();
+            updateOscillators();
+            applyAudioModes();
+
+            oscL.start();
+            oscR.start();
+            
+            drawVisualizer();
+        }
+
+        function setupPinkNoise() {
+            const bufferSize = 2 * audioCtx.sampleRate;
+            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            
+            let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+            for (let i = 0; i < bufferSize; i++) {
+                let white = Math.random() * 2 - 1;
+                b0 = 0.99886 * b0 + white * 0.0555179;
+                b1 = 0.99332 * b1 + white * 0.0750759;
+                b2 = 0.96900 * b2 + white * 0.1538520;
+                b3 = 0.86650 * b3 + white * 0.3104856;
+                b4 = 0.55000 * b4 + white * 0.5329522;
+                b5 = -0.7616 * b5 - white * 0.0168980;
+                output[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                output[i] *= 0.11; 
+                b6 = white * 0.115926;
+            }
+
+            noiseSource = audioCtx.createBufferSource();
+            noiseSource.buffer = noiseBuffer;
+            noiseSource.loop = true;
+
+            noisePan = audioCtx.createStereoPanner();
+            noisePan.pan.value = 0;
+
+            noiseGain = audioCtx.createGain();
+            noiseGain.gain.value = slNoise.value / 100;
+
+            // Spatial Orbit LFO
+            orbitOsc = audioCtx.createOscillator();
+            orbitOsc.type = 'sine';
+            orbitOsc.frequency.value = 0.05; // 20 second full pan sweep
+            orbitGain = audioCtx.createGain();
+            orbitGain.gain.value = 0; // Off by default
+
+            orbitOsc.connect(orbitGain);
+            orbitGain.connect(noisePan.pan);
+
+            noiseSource.connect(noisePan);
+            noisePan.connect(noiseGain);
+            noiseGain.connect(masterGain);
+            
+            noiseSource.start();
+            orbitOsc.start();
+        }
+
+        function stopAudioEngine() {
+            if (oscL) oscL.stop();
+            if (oscR) oscR.stop();
+            if (amOsc) amOsc.stop();
+            if (orbitOsc) orbitOsc.stop();
+            if (noiseSource) noiseSource.stop();
+            if (audioCtx) audioCtx.close();
+            audioCtx = null;
+        }
+
+        function updateOscillators() {
+            if (!audioCtx) return;
+            
+            const time = audioCtx.currentTime;
+            
+            if (isIsochronic) {
+                // Isochronic: Both ears play base freq, AM gain pulses at currentOffset
+                oscL.frequency.setValueAtTime(baseFreq, time);
+                oscR.frequency.setValueAtTime(baseFreq, time);
+                amOsc.frequency.setValueAtTime(currentOffset, time);
+            } else {
+                // Binaural: Left base, Right base+offset, AM bypassed
+                oscL.frequency.setValueAtTime(baseFreq, time);
+                oscR.frequency.setValueAtTime(baseFreq + currentOffset, time);
+            }
+            
+            lblLeftFreq.textContent = `${baseFreq.toFixed(1)} Hz`;
+            lblRightFreq.textContent = `${isIsochronic ? baseFreq.toFixed(1) : (baseFreq + currentOffset).toFixed(1)} Hz`;
+            
+            const displayOffset = currentOffset.toFixed(1);
+            lblOffsetDisplay.textContent = `${displayOffset} Hz`;
+            
+            if (!isJourneyActive) {
+                //valOffset.textContent = `${displayOffset} Hz`; Already updated prior to call
+                slOffset.value = currentOffset;
+                updatePresetButtons();
+            }
+        }
+
+        function applyAudioModes() {
+            if (!audioCtx) return;
+            const time = audioCtx.currentTime;
+            
+            if (isIsochronic) {
+                amGain.gain.setValueAtTime(0.5, time); // Base halfway
+                amOscGain.gain.setValueAtTime(0.5, time); // Oscillate +/- 0.5 (0 to 1 total)
+            } else {
+                amGain.gain.setValueAtTime(1.0, time);
+                amOscGain.gain.setValueAtTime(0, time);
+            }
+            
+            if (isOrbitActive) {
+                orbitGain.gain.setValueAtTime(1, time); // Full pan -1 to +1
+            } else {
+                orbitGain.gain.setValueAtTime(0, time);
+                noisePan.pan.setValueAtTime(0, time); // Reset to center
+            }
+        }
+
+        function updatePresetButtons() {
+            presetBtns.forEach(btn => {
+                if (parseFloat(btn.dataset.offset) === parseFloat(currentOffset.toFixed(1))) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        function renderProtocols() {
+            const list = document.getElementById('protocolList');
+            list.innerHTML = '';
+            Object.values(gatewayProtocols).forEach(p => {
+                const isSelected = activeProtocolId === p.id;
+                const card = document.createElement('div');
+                card.className = `protocol-card p-3 rounded-lg border ${isSelected ? p.border : 'border-gray-800'} ${isSelected ? p.bg : 'bg-gray-900/50'} cursor-pointer transition-all hover:bg-gray-800 group`;
+                card.onclick = () => {
+                    if (isJourneyActive || wbtbInterval) return;
+                    activeProtocolId = p.id;
+                    
+                    if (p.id === 'custom') {
+                        document.getElementById('customTargetDiv').classList.remove('hidden');
+                    } else {
+                        document.getElementById('customTargetDiv').classList.add('hidden');
+                    }
+                    
+                    renderProtocols();
+                };
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-display tracking-wider text-xs ${isSelected ? p.color : 'text-gray-400 group-hover:text-gray-300'}">${p.name}</span>
+                        ${isSelected ? '<span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_5px_#22d3ee]"></span>' : ''}
+                    </div>
+                    <div class="text-[10px] text-gray-500 leading-tight">${p.desc}</div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function playChime() {
+            if (!audioCtx) initAudioEngine(); // Ensure ctx exists
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(masterGain);
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 2);
+            
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 3);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 3.1);
+        }
+
+        function handleWbtbStart() {
+            if (!isPlaying) toggleSystem();
+            
+            const delayMins = parseInt(slWbtb.value);
+            if (delayMins === 0) {
+                startSequence();
+                return;
+            }
+            
+            // WBTB mode active
+            wbtbDelayMs = delayMins * 60 * 1000;
+            wbtbEndTime = Date.now() + wbtbDelayMs;
+            
+            document.getElementById('wbtbOverlay').classList.remove('hidden');
+            document.getElementById('wbtbOverlay').classList.add('flex');
+            
+            // Set volumes to zero during sleep
+            if (masterGain) masterGain.gain.value = 0;
+            
+            wbtbInterval = setInterval(() => {
+                const now = Date.now();
+                const diff = wbtbEndTime - now;
+                
+                if (diff <= 0) {
+                    clearInterval(wbtbInterval);
+                    document.getElementById('wbtbStatusText').textContent = "CLEARING BRAIN FOG (60s)";
+                    document.getElementById('wbtbCountdown').textContent = "00:01:00";
+                    
+                    playChime();
+                    
+                    // 60 sec fog clear
+                    let fogTime = 60;
+                    wbtbInterval = setInterval(() => {
+                        fogTime--;
+                        document.getElementById('wbtbCountdown').textContent = formatTime(fogTime);
+                        if (fogTime <= 0) {
+                            clearInterval(wbtbInterval);
+                            wbtbInterval = null;
+                            document.getElementById('wbtbOverlay').classList.add('hidden');
+                            document.getElementById('wbtbOverlay').classList.remove('flex');
+                            
+                            // Restore volumes
+                            if (masterGain) masterGain.gain.value = slMaster.value / 100;
+                            startSequence();
+                        }
+                    }, 1000);
+                    return;
+                }
+                
+                document.getElementById('wbtbCountdown').textContent = formatTime(Math.floor(diff/1000));
+            }, 1000);
+        }
+
+        function cancelWbtb() {
+            if (wbtbInterval) {
+                clearInterval(wbtbInterval);
+                wbtbInterval = null;
+            }
+            document.getElementById('wbtbOverlay').classList.add('hidden');
+            document.getElementById('wbtbOverlay').classList.remove('flex');
+            if (masterGain) masterGain.gain.value = slMaster.value / 100;
+        }
+
+        document.getElementById('btnCancelWbtb').addEventListener('click', cancelWbtb);
+
+        function startSequence() {
+            isJourneyActive = true;
+            panelManual.classList.add('is-automating');
+            statusBadge.classList.remove('hidden');
+            statusBadge.classList.add('flex');
+            btnHalt.classList.remove('hidden');
+            
+            document.getElementById('btnStartSequence').classList.add('hidden');
+            document.getElementById('wbtbControls').classList.add('hidden');
+            document.getElementById('executionView').classList.remove('hidden');
+            document.getElementById('protocolList').classList.add('opacity-50', 'pointer-events-none');
+            document.getElementById('customTargetDiv').classList.add('opacity-50', 'pointer-events-none');
+
+            const durationMins = parseInt(slDuration.value);
+            journeyDurationMs = durationMins * 60 * 1000;
+            journeyStartTime = performance.now();
+            
+            const protocol = gatewayProtocols[activeProtocolId];
+            computedPhases = [];
+            let currentPhaseStartMs = 0;
+            let segmentsHtml = '';
+            
+            protocol.phases.forEach((phase, index) => {
+                const phaseDuration = (phase.pct / 100) * journeyDurationMs;
+                computedPhases.push({
+                    name: phase.name,
+                    startOffset: phase.start,
+                    endOffset: phase.end,
+                    startTime: currentPhaseStartMs,
+                    endTime: currentPhaseStartMs + phaseDuration
+                });
+                currentPhaseStartMs += phaseDuration;
+                
+                const colors = ['bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-cyan-500'];
+                segmentsHtml += `<div style="width: ${phase.pct}%" class="h-full ${colors[index%colors.length]} border-r border-black/50"></div>`;
+            });
+            
+            document.getElementById('timelineSegments').innerHTML = segmentsHtml;
+            
+            if (journeyAnimationFrame) cancelAnimationFrame(journeyAnimationFrame);
+            journeyStep();
+        }
+
+        function journeyStep() {
+            if (!isJourneyActive) return;
+            
+            const now = performance.now();
+            const elapsed = now - journeyStartTime;
+            
+            if (elapsed >= journeyDurationMs) {
+                finishSequence();
+                return;
+            }
+            
+            let currentPhase = computedPhases[0];
+            for (let p of computedPhases) {
+                if (elapsed >= p.startTime && elapsed < p.endTime) {
+                    currentPhase = p;
+                    break;
+                }
+            }
+            
+            const phaseElapsed = elapsed - currentPhase.startTime;
+            const phaseDuration = currentPhase.endTime - currentPhase.startTime;
+            const progress = phaseElapsed / phaseDuration;
+            
+            currentOffset = currentPhase.startOffset + (currentPhase.endOffset - currentPhase.startOffset) * progress;
+            updateOscillators();
+            
+            document.getElementById('lblCurrentPhase').textContent = currentPhase.name;
+            const timeRemainingPhase = Math.ceil((currentPhase.endTime - elapsed) / 1000);
+            document.getElementById('lblPhaseTime').textContent = formatTime(timeRemainingPhase);
+            
+            const totalProgress = elapsed / journeyDurationMs;
+            document.getElementById('timelineProgress').style.width = `${totalProgress * 100}%`;
+            
+            journeyAnimationFrame = requestAnimationFrame(journeyStep);
+        }
+
+        function finishSequence() {
+            isJourneyActive = false;
+            if (computedPhases.length > 0) {
+                currentOffset = computedPhases[computedPhases.length-1].endOffset;
+            }
+            updateOscillators();
+            resetSequenceUI();
+        }
+
+        function haltSequence() {
+            if (!isJourneyActive) return;
+            if (journeyAnimationFrame) cancelAnimationFrame(journeyAnimationFrame);
+            isJourneyActive = false;
+            if (audioCtx) updateOscillators();
+            resetSequenceUI();
+        }
+        
+        function resetSequenceUI() {
+            panelManual.classList.remove('is-automating');
+            statusBadge.classList.add('hidden');
+            statusBadge.classList.remove('flex');
+            btnHalt.classList.add('hidden');
+            
+            document.getElementById('btnStartSequence').classList.remove('hidden');
+            document.getElementById('wbtbControls').classList.remove('hidden');
+            document.getElementById('executionView').classList.add('hidden');
+            document.getElementById('protocolList').classList.remove('opacity-50', 'pointer-events-none');
+            document.getElementById('customTargetDiv').classList.remove('opacity-50', 'pointer-events-none');
+            document.getElementById('timelineProgress').style.width = '0%';
+        }
+
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+            const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            return `${h}:${m}:${s}`;
+        }
+
+        function formatDuration(mins) {
+            if (mins >= 60) {
+                const h = Math.floor(mins / 60);
+                const m = mins % 60;
+                return m === 0 ? `${h} Hour${h > 1 ? 's' : ''}` : `${h}h ${m}m`;
+            }
+            return `${mins} Mins`;
+        }
+
+        function updateTimer() {
+            if (!isPlaying) return;
+            const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+            lblTimer.textContent = formatTime(elapsed);
+        }
+
+        function toggleSystem() {
+            isPlaying = !isPlaying;
+            
+            if (isPlaying) {
+                initAudioEngine();
+                btnMasterToggle.classList.replace('bg-cyan-950/30', 'bg-cyan-900/80');
+                btnMasterToggle.classList.add('shadow-[0_0_30px_rgba(34,211,238,0.4)]');
+                lblMasterToggle.textContent = 'TERMINATE SESSION';
+                iconPlay.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
+                
+                btnGanzfeld.classList.remove('hidden');
+                btnGanzfeld.classList.add('inline-flex');
+                
+                sessionStartTime = Date.now();
+                timerInterval = setInterval(updateTimer, 1000);
+            } else {
+                cancelWbtb();
+                haltSequence();
+                stopAudioEngine();
+                
+                btnMasterToggle.classList.replace('bg-cyan-900/80', 'bg-cyan-950/30');
+                btnMasterToggle.classList.remove('shadow-[0_0_30px_rgba(34,211,238,0.4)]');
+                lblMasterToggle.textContent = 'INITIALIZE SESSION';
+                iconPlay.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+                
+                btnGanzfeld.classList.add('hidden');
+                btnGanzfeld.classList.remove('inline-flex');
+                if (isGanzfeldActive) toggleGanzfeld();
+                
+                clearInterval(timerInterval);
+                lblTimer.textContent = '00:00:00';
+            }
+        }
+
+        function toggleGanzfeld() {
+            isGanzfeldActive = !isGanzfeldActive;
+            if (isGanzfeldActive) {
+                ganzfeldOverlay.classList.remove('hidden');
+                ganzfeldOverlay.classList.add('flex');
+            } else {
+                ganzfeldOverlay.classList.add('hidden');
+                ganzfeldOverlay.classList.remove('flex');
+            }
+        }
+
+        btnMasterToggle.addEventListener('click', toggleSystem);
+        btnHalt.addEventListener('click', haltSequence);
+        document.getElementById('btnStartSequence').addEventListener('click', handleWbtbStart);
+        btnGanzfeld.addEventListener('click', toggleGanzfeld);
+        ganzfeldOverlay.addEventListener('click', toggleGanzfeld);
+
+        slMaster.addEventListener('input', (e) => {
+            valMaster.textContent = `${e.target.value}%`;
+            if (masterGain && !wbtbInterval) masterGain.gain.value = e.target.value / 100;
+        });
+
+        slCarrier.addEventListener('input', (e) => {
+            valCarrier.textContent = `${e.target.value}%`;
+            if (carrierGain) carrierGain.gain.value = e.target.value / 100;
+        });
+
+        slNoise.addEventListener('input', (e) => {
+            valNoise.textContent = `${e.target.value}%`;
+            if (noiseGain) noiseGain.gain.value = e.target.value / 100;
+        });
+        
+        toggleIsochronic.addEventListener('change', (e) => {
+            isIsochronic = e.target.checked;
+            updateOscillators();
+            applyAudioModes();
+        });
+
+        toggleOrbit.addEventListener('change', (e) => {
+            isOrbitActive = e.target.checked;
+            applyAudioModes();
+        });
+
+        slBaseFreq.addEventListener('input', (e) => {
+            baseFreq = parseFloat(e.target.value);
+            valBaseFreq.textContent = `${baseFreq} Hz`;
+            updateOscillators();
+        });
+
+        slOffset.addEventListener('input', (e) => {
+            if (isJourneyActive) return;
+            currentOffset = parseFloat(e.target.value);
+            valOffset.textContent = `${currentOffset.toFixed(1)} Hz`;
+            updateOscillators();
+        });
+
+        slDuration.addEventListener('input', (e) => {
+            valDuration.textContent = formatDuration(parseInt(e.target.value));
+        });
+
+        slWbtb.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            valWbtb.textContent = val === 0 ? "OFF" : formatDuration(val);
+        });
+        
+        slCustomHz.addEventListener('input', (e) => {
+            const hz = parseFloat(e.target.value);
+            valCustomHz.textContent = `${hz.toFixed(1)} Hz`;
+            // Update custom protocol phases dynamically
+            gatewayProtocols.custom.phases[0].end = hz;
+            gatewayProtocols.custom.phases[1].start = hz;
+            gatewayProtocols.custom.phases[1].end = hz;
+            gatewayProtocols.custom.phases[2].start = hz;
+            gatewayProtocols.custom.phases[2].end = hz;
+            gatewayProtocols.custom.phases[3].start = hz;
+        });
+
+        presetBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (isJourneyActive) return;
+                currentOffset = parseFloat(btn.dataset.offset);
+                updateOscillators();
+            });
+        });
+
+        renderProtocols();
+
+        function drawVisualizer() {
+            if (!isPlaying) {
+                canvasCtx.clearRect(0, 0, visualizer.width, visualizer.height);
+                return;
+            }
+
+            requestAnimationFrame(drawVisualizer);
+            
+            // Handle Ganzfeld flashing if active
+            if (isGanzfeldActive) {
+                const t = performance.now() / 1000;
+                const phase = (Math.sin(t * Math.PI * 2 * currentOffset) + 1) / 2;
+                ganzfeldOverlay.style.opacity = 0.3 + (phase * 0.7);
+                document.getElementById('ganzfeldHz').textContent = currentOffset.toFixed(1) + ' HZ';
+            }
+
+            const width = visualizer.width;
+            const height = visualizer.height;
+            const bufferLength = analyserL.frequencyBinCount;
+            const dataArrayL = new Uint8Array(bufferLength);
+            const dataArrayR = new Uint8Array(bufferLength);
+
+            analyserL.getByteTimeDomainData(dataArrayL);
+            analyserR.getByteTimeDomainData(dataArrayR);
+
+            canvasCtx.fillStyle = 'rgba(5, 5, 7, 0.2)';
+            canvasCtx.fillRect(0, 0, width, height);
+
+            canvasCtx.lineWidth = 2;
+            const sliceWidth = width * 1.0 / bufferLength;
+
+            // Left Channel
+            canvasCtx.beginPath();
+            canvasCtx.strokeStyle = '#22d3ee';
+            canvasCtx.shadowBlur = 10;
+            canvasCtx.shadowColor = '#22d3ee';
+            let x = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArrayL[i] / 128.0;
+                const y = v * height / 2;
+                if (i === 0) canvasCtx.moveTo(x, y);
+                else canvasCtx.lineTo(x, y);
+                x += sliceWidth;
+            }
+            canvasCtx.stroke();
+
+            // Right Channel
+            canvasCtx.beginPath();
+            canvasCtx.strokeStyle = '#ec4899';
+            canvasCtx.shadowBlur = 10;
+            canvasCtx.shadowColor = '#ec4899';
+            x = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArrayR[i] / 128.0;
+                const y = v * height / 2;
+                if (i === 0) canvasCtx.moveTo(x, y);
+                else canvasCtx.lineTo(x, y);
+                x += sliceWidth;
+            }
+            canvasCtx.stroke();
+            canvasCtx.shadowBlur = 0;
+        }
+    </script>
+</body>
+</html>
