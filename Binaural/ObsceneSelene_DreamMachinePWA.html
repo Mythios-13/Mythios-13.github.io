@@ -431,8 +431,6 @@
         ]
         };
 
-        // Set the visible icon
-        document.getElementById("appIcon");//.src = ICON_192;
         // Create a Blob URL for the manifest and inject the <link>
         const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
         const manifestURL = URL.createObjectURL(manifestBlob);
@@ -441,6 +439,10 @@
         link.href = manifestURL;
         document.head.appendChild(link);
 
+        // Set the visible icon
+        if(document.getElementById("appIcon")){
+            document.getElementById("appIcon").src = ICON_192;
+        }
         // Also add apple-touch-icon
         const appleIcon = document.createElement("link");
         appleIcon.rel = "apple-touch-icon";
