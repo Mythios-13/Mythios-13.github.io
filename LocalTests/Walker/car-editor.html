@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GB Studio — car geometry editor for Meridian</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#0a0e14;color:#eef3f8;
+    font-family:ui-monospace,Menlo,Consolas,monospace}
+  #left{position:fixed;left:0;top:0;bottom:0;width:46%;display:flex;flex-direction:column;
+    border-right:1px solid rgba(255,255,255,.12);background:#0c1118}
+  #hd{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.09)}
+  #hd h1{font-size:13px;letter-spacing:.22em;color:#ffc773}
+  #hd p{font-size:9.5px;letter-spacing:.14em;color:#7e93a8;margin-top:3px;text-transform:uppercase}
+  #left textarea{width:100%;background:#0a0f16;color:#d5e2ee;border:0;outline:none;resize:none;
+    padding:12px 14px;font:11.5px/1.55 ui-monospace,Menlo,Consolas,monospace;tab-size:2}
+  #geocode{flex:.85;min-height:110px;border-bottom:1px solid rgba(255,255,255,.07)}
+  #code{flex:1.35;min-height:140px}
+  .sec{display:flex;align-items:center;justify-content:space-between;padding:6px 14px 4px;
+    font-size:9px;letter-spacing:.2em;color:#7e93a8;text-transform:uppercase;background:#0c1118;
+    border-top:1px solid rgba(255,255,255,.06)}
+  .sec b{color:#ffc773;font-weight:400}
+  .sec button{padding:2px 9px;font-size:9px;letter-spacing:.08em}
+  #bar{display:flex;flex-wrap:wrap;gap:7px;align-items:center;padding:9px 12px;
+    border-top:1px solid rgba(255,255,255,.09);background:#0c1118}
+  #bar label{font-size:9px;letter-spacing:.16em;color:#7e93a8;text-transform:uppercase}
+  select,input[type=color]{background:#141b25;color:#eef3f8;border:1px solid rgba(255,255,255,.16);
+    border-radius:6px;padding:4px 6px;font:inherit;font-size:11px}
+  input[type=color]{width:34px;height:24px;padding:1px;cursor:pointer}
+  button{background:#182230;color:#ffd35e;border:1px solid rgba(255,199,115,.35);border-radius:7px;
+    padding:6px 13px;font:inherit;font-size:10.5px;letter-spacing:.1em;cursor:pointer;text-transform:uppercase}
+  button:hover{background:#20304a}
+  button.alt{color:#9fc2ff;border-color:rgba(140,180,255,.3)}
+  .chk{display:flex;align-items:center;gap:4px}
+  #status{padding:6px 14px;font-size:10px;letter-spacing:.1em;color:#7e93a8;
+    border-top:1px solid rgba(255,255,255,.06);min-height:26px;white-space:pre-wrap}
+  #status.err{color:#ff8d8d}
+  #view{position:fixed;left:46%;right:0;top:0;bottom:0}
+  #hint{position:absolute;left:12px;bottom:10px;font-size:9px;letter-spacing:.18em;color:#5f7186;
+    text-transform:uppercase;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="left">
+  <div id="hd"><h1>GB STUDIO</h1><p>edit · rebuild · tweak — meridian car geometry</p></div>
+  <div class="sec"><span>primitives · <b>initGeo()</b></span><button id="rgeo" class="alt">↺ reset</button></div>
+  <textarea id="geocode" spellcheck="false"></textarea>
+  <div class="sec"><span>car geometry · <b>carGeometry(type,paint)</b></span><button id="rcar" class="alt">↺ reset</button></div>
+  <textarea id="code" spellcheck="false"></textarea>
+  <div id="bar">
+    <label>type</label><select id="type">
+      <option>sport</option><option>sedan</option><option>hatch</option><option>suv</option>
+      <option>van</option><option>taxi</option><option>bus</option></select>
+    <label>paint</label><input type="color" id="paint" value="#d8172a">
+    <button id="rebuild">↻ Rebuild</button>
+    <span class="chk"><input type="checkbox" id="wire"><label for="wire">wire</label></span>
+    <span class="chk"><input type="checkbox" id="spin" checked><label for="spin">spin</label></span>
+  </div>
+  <div id="status"></div>
+</div>
+<div id="view"><div id="hint">drag orbit · shift-drag pan · wheel zoom · ⌘/ctrl+enter rebuild</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script type="text/plain" id="defaultgeocode">
+function initGeo(){
+  const nn=g=>g.toNonIndexed?g.toNonIndexed():g;
+  GEO.box    = nn(new THREE.BoxGeometry(1,1,1));
+  GEO.plane  = nn(new THREE.PlaneGeometry(1,1));
+  GEO.cyl    = nn(new THREE.CylinderGeometry(.5,.5,1,10,1));
+  GEO.cylHi  = nn(new THREE.CylinderGeometry(.5,.5,1,32,1));   /* 32-gon: wheels read perfectly round */
+  GEO.cone   = nn(new THREE.ConeGeometry(.5,1,12,1));
+  GEO.sph    = nn(new THREE.SphereGeometry(.5,10,7));
+  GEO.sphHi  = nn(new THREE.SphereGeometry(.5,16,12));
+}
+</script>
+
+<script type="text/plain" id="defaultcode">
+function carGeometry(type,paint){
+  const gb=new GB(),c=new THREE.Color(paint),dark=new THREE.Color(0x101316),
+        gl=new THREE.Color(0x0b1218),chr=new THREE.Color(0x8f979d),
+        lf=new THREE.Color(0xfdf6e2),lr=new THREE.Color(0xc4392a),rub=new THREE.Color(0x0e0f11);
+  let L,W,h;
+  if(type==='sedan'){L=4.5;W=1.85;h=.62;}
+  else if(type==='hatch'){L=3.9;W=1.78;h=.66;}
+  else if(type==='suv'){L=4.8;W=2.02;h=.82;}
+  else if(type==='van'){L=5.3;W=2.05;h=1.28;}
+  else if(type==='taxi'){L=4.6;W=1.86;h=.62;}
+  else if(type==='sport'){L=4.35;W=1.92;h=.40;}   // low wedge
+  else {L=11.2;W=2.55;h=1.5;} // bus
+  const hl=L/2;
+  /* chassis + body */
+  gb.box(W*1.01,.30,L*.97,0,.40,0,dark);
+  gb.box(W,h,L,0,.30+h/2,0,c);
+  /* wheel arch shadow band */
+  gb.box(W*.82,.16,L*.99,0,.32+h,0,c);
+  if(type==='sport'){
+    /* low wedge — bevelled panels, ferrari style */
+    const dk=new THREE.Color(0x14171b);
+    gb.add(GEO.box,gb.mat(0,.750,hl-1.22,0,W*.95,.5,2.2,.15),c,1,1);      // nose falling to the front
+    gb.add(GEO.box,gb.mat(0,.92,0,0,W*.78,.06,1.25,.95),gl,1,1);       // raked windshield
+    gb.box(W*.66,.07,1.05,0,1.04,-.72,c);                                 // flat roof
+    gb.add(GEO.box,gb.mat(0,.98,-1.38,0,W*.80,.07,.95,-.30),c,1,1);       // engine deck
+    for(const s of [1,-1]){                                               // leaning glass + side strakes
+      gb.add(GEO.box,gb.mat(s*W*.335,.99,-.62,0,.05,.30,1.0,0,s>0?.42:-.42),gl,1,1);
+      gb.box(.04,.07,L*.46,s*(W/2+.005),.50,-.05,dk);
+    }
+    for(const s of [1,-1])gb.box(.06,.22,.08,s*W*.30,1.06,-hl+.20,dk);    // wing mounts
+    gb.box(W*.88,.05,.34,0,1.19,-hl+.18,c);                               // rear wing
+    gb.box(W*.28,.08,.05,-W*.27,.60,hl+.01,lf);gb.box(W*.28,.08,.05,W*.27,.60,hl+.01,lf);
+    gb.box(W*.84,.09,.05,0,.60,-hl-.01,lr);                               // full-width tail bar
+  } else if(type==='bus'){
+    /* ram bus — clean two-box liner, glass band, chrome ram bar */
+    gb.box(W*1.0,.95,L*.99,0,h+.30+.48,0,c);                              // upper deck
+    gb.box(W*.96,.10,L*.94,0,h+.30+1.0,0,new THREE.Color(0xe8e4da));      // roof cap
+    gb.box(W*.5,.16,L*.26,0,h+.30+1.12,-L*.12,new THREE.Color(0x9aa2a8)); // AC unit
+    for(const s of [1,-1]){
+      gb.plane(L*.84,.60,s*(W/2+.02),h+.30+.55,0,Math.PI/2*s,gl,1,1);     // side glass band
+      gb.box(.05,.06,L*.9,s*(W/2+.02),.95,0,new THREE.Color(0x70787e));   // rub rail
+    }
+    gb.plane(W*.88,.60,0,h+.30+.55,hl+.015,0,gl,1,1);                     // windscreen
+    gb.plane(W*.84,.42,0,h+.30+.58,-hl-.015,Math.PI,gl,1,1);              // rear glass
+    gb.box(W*.98,.46,.10,0,1.05,hl+.10,chr);gb.box(W*.98,.10,.30,0,1.32,hl+.05,chr);  // ram bar
+    for(const s of [1,-1])gb.box(.09,.75,.09,s*W*.30,.85,hl+.14,chr);
+    gb.box(W*1.0,.24,.3,0,.5,-hl+.05,chr);                                // rear bumper
+    gb.box(W*.26,.16,.06,-W*.30,.72,hl+.02,lf);gb.box(W*.26,.16,.06,W*.30,.72,hl+.02,lf);
+    gb.box(W*.30,.18,.06,-W*.30,.80,-hl-.02,lr);gb.box(W*.30,.18,.06,W*.30,.80,-hl-.02,lr);
+  } else {
+    const cab=(type==='van')?0:1;
+    if(cab){
+      const cl=L*.42,cz=(type==='hatch'?-.28:-.16);
+      gb.box(W*.88,.52,cl,0,h+.30+.26,cz,new THREE.Color(paint).multiplyScalar(.92));
+      /* glazing */
+      gb.plane(W*.80,.40,0,h+.30+.30,cz+cl/2+.02,0,gl,1,1);
+      gb.plane(W*.80,.40,0,h+.30+.30,cz-cl/2-.02,Math.PI,gl,1,1);
+      for(const s of [1,-1])gb.plane(cl*.86,.40,s*(W*.88/2+.02),h+.30+.30,cz,Math.PI/2*s,gl,1,1);
+      for(const s of [1,-1])gb.box(.17,.06,.07,s*(W/2+.07),h+.30+.30,cz+cl/2-.12,new THREE.Color(0x14181c));  // mirrors
+    } else {
+      gb.box(W*1.0,.5,L*.94,0,h+.30+.25,-L*.02,new THREE.Color(paint));
+      for(const s of [1,-1])gb.plane(L*.5,.5,s*(W/2+.01),h+.30+.42,L*.16,Math.PI/2*s,gl,1,1);
+      gb.plane(W*.8,.5,0,h+.30+.42,L*.47+.02,0,gl,1,1);
+    }
+  }
+  /* bumpers + lights (skipped for sport & bus — they carry their own) */
+  if(type!=='sport'&&type!=='bus'){
+    gb.box(W*1.01,.22,.3,0,.42,hl-.05,chr);gb.box(W*1.01,.22,.3,0,.42,-hl+.05,chr);
+    gb.box(W*.30,.16,.12,-W*.28,.60,hl+.01,lf);gb.box(W*.30,.16,.12,W*.28,.60,hl+.01,lf);
+    gb.box(W*.30,.16,.12,-W*.28,.60,-hl-.01,lr);gb.box(W*.30,.16,.12,W*.28,.60,-hl-.01,lr);
+  }
+  if(type!=='sport'&&type!=='bus')for(const s of [1,-1])                 // rub strip
+    gb.box(.03,.06,L*.62,s*(W/2+.012),.45+h*.28,-.05,dark);
+  const wr=(type==='bus')?.52:(type==='sport'?.34:.35),
+        ww=(type==='van'||type==='bus')?.28:(type==='sport'?.31:.23);
+  const wy=wr+.05;
+  for(const sz of [hl-L*.22,-(hl-L*.22)])for(const sx of [-1,1]){
+    gb.cylX(wr,ww,sx*(W/2-.02),wy,sz,rub);
+    gb.cylX(wr*.55,ww*1.05,sx*(W/2-.02),wy,sz,chr);
+  }
+  if(type==='taxi'){gb.box(.62,.14,.34,0,h+.9,0,new THREE.Color(0xf6f1e0));}
+  return gb.build();
+}
+</script>
+
+<script>
+/* ================================================================== *
+ *  DEPENDENCIES — copied verbatim from procedural-city-walker.html
+ *  (primitives GEO + geometry builder GB) so pasted game code runs as-is
+ * ================================================================== */
+const _M=new THREE.Matrix4(),_PP=new THREE.Vector3(),_SS=new THREE.Vector3(),
+      _QQ=new THREE.Quaternion(),_EE=new THREE.Euler(),_NM=new THREE.Matrix3(),_TV=new THREE.Vector3();
+const WHITE=new THREE.Color(1,1,1);
+const GEO={};
+function initGeo(){
+  const nn=g=>g.toNonIndexed?g.toNonIndexed():g;
+  GEO.box    = nn(new THREE.BoxGeometry(1,1,1));
+  GEO.plane  = nn(new THREE.PlaneGeometry(1,1));
+  GEO.cyl    = nn(new THREE.CylinderGeometry(.5,.5,1,10,1));
+  GEO.cylHi  = nn(new THREE.CylinderGeometry(.5,.5,1,32,1));
+  GEO.cone   = nn(new THREE.ConeGeometry(.5,1,12,1));
+  GEO.sph    = nn(new THREE.SphereGeometry(.5,10,7));
+  GEO.sphHi  = nn(new THREE.SphereGeometry(.5,16,12));
+}
+function GB(){this.p=[];this.n=[];this.u=[];this.c=[];}
+GB.prototype.add=function(g,m,col,us,vs,cullBack){
+  const P=g.attributes.position,N=g.attributes.normal,U=g.attributes.uv;
+  if(!P||!N) return;
+  _NM.getNormalMatrix(m);
+  col=col||WHITE; us=us||1; vs=vs||1;
+  const p=this.p,n=this.n,u=this.u,c=this.c;
+  for(let i=0;i<P.count;i++){
+    _TV.fromBufferAttribute(P,i).applyMatrix4(m); p.push(_TV.x,_TV.y,_TV.z);
+    _TV.set(N.getX(i),N.getY(i),N.getZ(i)).applyMatrix3(_NM).normalize(); n.push(_TV.x,_TV.y,_TV.z);
+    if(U&&U.itemSize>=2){u.push(U.getX(i)*us,U.getY(i)*vs);} else {u.push(0,0);}
+    c.push(col.r,col.g,col.b);
+  }
+};
+GB.prototype.mat=function(x,y,z,ry,sx,sy,sz,rx,rz){
+  _EE.set(rx||0,ry||0,rz||0); _QQ.setFromEuler(_EE);
+  return _M.compose(_PP.set(x,y,z),_QQ,_SS.set(sx,sy,sz));
+};
+GB.prototype.box=function(w,h,d,x,y,z,col,ry){
+  this.add(GEO.box,this.mat(x,y,z,ry||0,w,h,d),col,1,1);
+};
+GB.prototype.slab=function(w,h,d,x,y,z,col,us,vs){
+  this.add(GEO.box,this.mat(x,y,z,0,w,h,d),col,us,vs);
+};
+GB.prototype.plane=function(w,h,x,y,z,ry,col,us,vs){
+  this.add(GEO.plane,this.mat(x,y,z,ry,w,h,1),col,us,vs);
+};
+GB.prototype.quadH=function(w,d,x,y,z,col,us,vs){
+  this.add(GEO.plane,this.mat(x,y,z,0,w,1,d,-Math.PI/2),col,us,vs);
+};
+GB.prototype.cyl=function(r,h,x,y,z,col,ry,seg){
+  this.add(seg?GEO.cylHi:GEO.cyl,this.mat(x,y,z,ry||0,r*2,h,r*2),col,1,1);
+};
+GB.prototype.cylX=function(r,h,x,y,z,col){
+  this.add(GEO.cylHi,this.mat(x,y,z,0,h,r*2,r*2,0,Math.PI/2),col,1,1);
+};
+GB.prototype.tube=function(r1,r2,h,x,y,z,col,ry){
+  const g=new THREE.CylinderGeometry(r2,r1,h,12,1).toNonIndexed();
+  this.add(g,this.mat(x,y,z,ry||0,1,1,1),col,1,1);
+};
+GB.prototype.cone=function(r,h,x,y,z,col){
+  this.add(GEO.cone,this.mat(x,y,z,0,r*2,h,r*2),col,1,1);
+};
+GB.prototype.sph=function(r,x,y,z,col,sx,sy,sz){
+  this.add(GEO.sph,this.mat(x,y,z,0,r*(sx||1),r*(sy||1),r*(sz||1)),col,1,1);
+};
+GB.prototype.build=function(){
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(this.p,3));
+  g.setAttribute('normal',new THREE.Float32BufferAttribute(this.n,3));
+  g.setAttribute('uv',new THREE.Float32BufferAttribute(this.u,2));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(this.c,3));
+  g.computeBoundingSphere();
+  return g;
+};
+GB.prototype.count=function(){return this.p.length/3;};
+
+/* ================================================================== *
+ *  editor shell — renderer, lights, orbit, compile + rebuild
+ * ================================================================== */
+initGeo();
+const view=document.getElementById('view');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+renderer.outputEncoding=THREE.sRGBEncoding;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;
+view.appendChild(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x0a0e14);
+const camera=new THREE.PerspectiveCamera(46,1,.1,300);
+
+scene.add(new THREE.HemisphereLight(0x9db8d8,0x2b3230,.85));
+const sun=new THREE.DirectionalLight(0xfff2dd,2.1);sun.position.set(6,9,4);scene.add(sun);
+const rim=new THREE.DirectionalLight(0x7fa8ff,.7);rim.position.set(-7,4,-6);scene.add(rim);
+
+const grid=new THREE.GridHelper(30,30,0x2a3a52,0x18222f);grid.position.y=-.005;scene.add(grid);
+const ground=new THREE.Mesh(new THREE.CircleGeometry(15,48),
+  new THREE.MeshStandardMaterial({color:0x0e131b,roughness:.95,metalness:0}));
+ground.rotation.x=-Math.PI/2;ground.position.y=-.01;scene.add(ground);
+
+/* MAT.carBody lookalike from the game */
+const carMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.42,metalness:.45});
+
+let obj=null;
+function setStatus(msg,isErr){const el=document.getElementById('status');
+  el.textContent=msg;el.className=isErr?'err':'';}
+function rebuild(){
+  /* stage 1 — primitives: compile the initGeo() box and refresh the GEO table */
+  const gcode=document.getElementById('geocode').value;
+  let gfn=null;
+  try{
+    gfn=new Function('THREE','GEO',gcode+'\n;return typeof initGeo==="function"?initGeo:null;')(THREE,GEO);
+  }catch(e){setStatus('PRIMITIVES SYNTAX ERROR → '+e.message,true);return;}
+  if(!gfn){setStatus('PRIMITIVES BOX MUST DEFINE  function initGeo()',true);return;}
+  for(const k in GEO)delete GEO[k];               /* fresh table — edits may drop primitives */
+  try{gfn();}catch(e){setStatus('PRIMITIVES RUNTIME ERROR → '+e.message,true);return;}
+  /* stage 2 — the car function itself */
+  const code=document.getElementById('code').value;
+  const type=document.getElementById('type').value;
+  const paint=parseInt(document.getElementById('paint').value.slice(1),16);
+  let fn=null;
+  try{
+    fn=new Function('THREE','GB','GEO',code+'\n;return typeof carGeometry==="function"?carGeometry:null;')(THREE,GB,GEO);
+  }catch(e){setStatus('SYNTAX ERROR → '+e.message,true);return;}
+  if(!fn){setStatus('CODE MUST DEFINE  function carGeometry(type,paint)',true);return;}
+  let geo;
+  try{geo=fn(type,paint);}catch(e){setStatus('RUNTIME ERROR → '+e.message,true);return;}
+  if(!geo||!geo.attributes||!geo.attributes.position){setStatus('carGeometry must return gb.build()',true);return;}
+  if(obj){scene.remove(obj);obj.geometry.dispose();obj=null;}
+  obj=new THREE.Mesh(geo,carMat);scene.add(obj);
+  geo.computeBoundingBox();const b=geo.boundingBox,s=new THREE.Vector3();b.getSize(s);
+  setStatus('OK · '+type.toUpperCase()+' · tris '+(geo.attributes.position.count/3|0)+
+    ' · bbox '+s.x.toFixed(2)+' × '+s.y.toFixed(2)+' × '+s.z.toFixed(2));
+}
+
+/* orbit: drag = rotate, shift/right-drag = pan, wheel = zoom */
+const orb={th:.7,ph:1.15,r:9.5,t:new THREE.Vector3(0,.8,0),drag:0};
+function cam(){
+  const sp=Math.sin(orb.ph);
+  camera.position.set(orb.t.x+orb.r*sp*Math.sin(orb.th),orb.t.y+orb.r*Math.cos(orb.ph),orb.t.z+orb.r*sp*Math.cos(orb.th));
+  camera.lookAt(orb.t);
+}
+const cv=renderer.domElement;
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('pointerdown',e=>{orb.drag=e.shiftKey||e.button===2?2:1;cv.setPointerCapture(e.pointerId);});
+cv.addEventListener('pointerup',()=>orb.drag=0);
+cv.addEventListener('pointermove',e=>{
+  if(!orb.drag)return;
+  if(orb.drag===1){orb.th-=e.movementX*.006;orb.ph=Math.min(1.52,Math.max(.15,orb.ph-e.movementY*.006));}
+  else{const s=orb.r*.0012,camR=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
+    orb.t.addScaledVector(camR,-e.movementX*s);orb.t.y+=e.movementY*s;}
+});
+cv.addEventListener('wheel',e=>{orb.r=Math.min(40,Math.max(2.5,orb.r*(1+Math.sign(e.deltaY)*.09)));},{passive:true});
+
+/* wire up controls */
+const defGeo=document.getElementById('defaultgeocode').textContent;
+const def=document.getElementById('defaultcode').textContent;
+document.getElementById('geocode').value=defGeo;
+document.getElementById('code').value=def;
+document.getElementById('rebuild').onclick=rebuild;
+document.getElementById('rgeo').onclick=()=>{document.getElementById('geocode').value=defGeo;rebuild();};
+document.getElementById('rcar').onclick=()=>{document.getElementById('code').value=def;rebuild();};
+document.getElementById('type').onchange=rebuild;
+document.getElementById('paint').oninput=rebuild;
+document.getElementById('wire').onchange=e=>carMat.wireframe=e.target.checked;
+addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter')rebuild();});
+
+function resize(){const w=view.clientWidth,h=view.clientHeight;
+  renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
+addEventListener('resize',resize);resize();
+
+(function loop(){requestAnimationFrame(loop);
+  if(document.getElementById('spin').checked&&!orb.drag)orb.th+=.004;
+  cam();renderer.render(scene,camera);})();
+rebuild();
+</script>
+</body>
+</html>
