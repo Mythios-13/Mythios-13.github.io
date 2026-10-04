@@ -51,7 +51,7 @@
      {
       "id": 2,
       "title": "Local AI Experiments",
-      "content": "This page contains all links to local AI runned experiments\n\n[AI Shooter](https://Mythios-13.github.io/LocalTests/outrun-shooter.html)\n\n[City Walker GTA-like](https://Mythios-13.github.io/LocalTests/Walker/procedural-city-walker.html)\n\n[WhisperWood, relaxing exploration](https://Mythios-13.github.io/LocalTests/whisperwood/forest.html)",
+      "content": "This page contains all links to local AI runned experiments\n\n[AI Shooter](https://Mythios-13.github.io/LocalTests/Shooter/outrun-shooter.html)\n\n[City Walker GTA-like](https://Mythios-13.github.io/LocalTests/Walker/procedural-city-walker.html)\n\n[WhisperWood, relaxing exploration](https://Mythios-13.github.io/LocalTests/whisperwood/forest.html)",
       "template": "default"
      },
       {
