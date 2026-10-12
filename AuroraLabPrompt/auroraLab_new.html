@@ -81,12 +81,14 @@
     /* ====================== BOTTOM SHEETS (shared by search + move) ====================== */
     .scrim{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1250;opacity:0;visibility:hidden;transition:.25s;}
     .scrim.active{opacity:1;visibility:visible;}
-    .sheet{position:fixed;left:0;right:0;bottom:0;z-index:1300;background:var(--surface);border-top:1px solid var(--border);border-radius:16px 16px 0 0;max-height:86dvh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .28s ease;box-shadow:0 -8px 30px rgba(0,0,0,0.5);}
-    .sheet.active{transform:translateY(0);}
+    /* visibility is delayed on the way out so the sheet still slides down, but a closed sheet can never be tabbed into */
+    .sheet{position:fixed;left:0;right:0;bottom:0;z-index:1300;background:var(--surface);border-top:1px solid var(--border);border-radius:16px 16px 0 0;max-height:86dvh;display:flex;flex-direction:column;transform:translateY(100%);visibility:hidden;transition:transform .28s ease,visibility 0s .28s;box-shadow:0 -8px 30px rgba(0,0,0,0.5);}
+    .sheet.active{transform:translateY(0);visibility:visible;transition:transform .28s ease;}
     .sheet-head{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);}
     .sheet-title{flex:1;font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .sheet-close{background:var(--bg);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;flex:none;}
-    .sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px calc(20px + env(safe-area-inset-bottom));}
+    /* min-height:0 is what lets a long list scroll inside a flex column capped at 86dvh */
+    .sheet-body{min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px calc(20px + env(safe-area-inset-bottom));}
     .sheet-hint{font-size:13px;color:var(--text-dim);line-height:1.5;}
     body.sheet-open{overflow:hidden;}
 
@@ -94,7 +96,7 @@
     #searchInput{flex:1;min-width:0;background:#010409;border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-size:16px;}   /* 16px stops iOS zooming on focus */
     [data-theme="light"] #searchInput{background:#fff;color:#1f2328;}
     .search-meta{font-size:12px;color:var(--text-dim);margin:2px 0 10px;}
-    .search-item{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;cursor:pointer;}
+    .search-item{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
     .search-item:active{border-color:var(--primary);}
     .search-proj{font-size:11px;color:var(--primary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px;overflow-wrap:anywhere;}
     .search-name{font-weight:600;font-size:14px;margin-bottom:6px;overflow-wrap:anywhere;}
@@ -897,6 +899,248 @@ function triggerAutosave() {
   autoSaveTimeout = setTimeout(() => { saveCurrentScene(); }, 1800);
 }
 
+/* ====================== BOTTOM SHEETS (shared by search + move) ====================== */
+/* A sheet floats over whatever page is open - opening one must never navigate away from the editor */
+function openSheet(sel) {
+  closeMenu();
+  $$(".sheet").forEach(s => s.classList.toggle("active", s.matches(sel)));
+  $("#scrim").classList.add("active");
+  document.body.classList.add("sheet-open");
+}
+
+window.closeSheets = () => {
+  $$(".sheet").forEach(s => s.classList.remove("active"));
+  $("#scrim").classList.remove("active");
+  document.body.classList.remove("sheet-open");
+};
+
+/* ====================== SEARCH PROMPTS ====================== */
+const SEARCH_FIELDS = [["Image", "imagePrompt"], ["Video", "videoPrompt"], ["Style", "styleSuffix"]];
+const SEARCH_LIMIT = 60;   // keeps the list cheap to paint on a phone holding hundreds of prompts
+
+/* Read-only scenes of ANY project in display order (getScenes() is the current-project one) */
+function scenesOf(proj) {
+  return proj && Array.isArray(proj.scenes) ? [...proj.scenes].sort((a,b) => (a.order ?? 0) - (b.order ?? 0)) : [];
+}
+
+/* Search behaves the same whatever case it is handed in, and an empty term would match forever */
+function normalizeTerms(terms) {
+  return (Array.isArray(terms) ? terms : [terms]).map(t => String(t).toLowerCase()).filter(Boolean);
+}
+
+/* Case-insensitive ranges of every term, merged so overlapping terms cannot nest <mark>s */
+function matchRanges(text, terms) {
+  const low = text.toLowerCase(), found = [];
+  normalizeTerms(terms).forEach(term => {
+    let i = low.indexOf(term);
+    while (i !== -1) { found.push([i, i + term.length]); i = low.indexOf(term, i + term.length); }
+  });
+  found.sort((a,b) => a[0] - b[0]);
+  const merged = [];
+  found.forEach(([start, end]) => {
+    const last = merged[merged.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else merged.push([start, end]);
+  });
+  return merged;
+}
+
+/* Escapes every chunk on its own, so prompt text can never inject markup into the result list */
+function highlight(text, terms) {
+  const ranges = matchRanges(text, terms);
+  if (!ranges.length) return esc(text);
+  let out = "", from = 0;
+  ranges.forEach(([start, end]) => {
+    out += esc(text.slice(from, start)) + "<mark>" + esc(text.slice(start, end)) + "</mark>";
+    from = end;
+  });
+  return out + esc(text.slice(from));
+}
+
+/* Window of the prompt around the first hit - long prompts stay readable inside a list row */
+function snippet(text, terms) {
+  const flat = text.replace(/\s+/g, " ").trim(), ranges = matchRanges(flat, terms), radius = 80;
+  if (!ranges.length) return trunc(flat, 150);
+  const start = Math.max(0, ranges[0][0] - radius);
+  const end = Math.min(flat.length, ranges[ranges.length - 1][1] + radius);
+  return (start > 0 ? "…" : "") + flat.slice(start, end).trim() + (end < flat.length ? "…" : "");
+}
+
+/* Every prompt in every project holding ALL the terms. Best field wins, title and current project get a bonus */
+function searchScenes(terms) {
+  const ts = normalizeTerms(terms);
+  const hits = [];
+  if (!ts.length) return hits;
+  projects.forEach(proj => scenesOf(proj).forEach(scene => {
+    const lows = SEARCH_FIELDS.map(([, key]) => (scene[key] || "").toLowerCase());
+    if (!ts.every(term => lows.some(low => low.includes(term)))) return;   // every word must appear somewhere
+    let firstField = SEARCH_FIELDS.length;
+    const tags = [];
+    lows.forEach((low, i) => {
+      if (ts.some(t => low.includes(t))) { if (firstField === SEARCH_FIELDS.length) firstField = i; tags.push(SEARCH_FIELDS[i][0]); }
+    });
+    const name = getSceneDisplayName(scene);
+    let score = firstField;
+    if (ts.every(t => name.toLowerCase().includes(t))) score -= 1;   // a title hit beats a body hit
+    if (proj.id === currentProjectId) score -= 0.5;                      // the project you are in is usually the one you want
+    hits.push({proj, scene, name, tags, score, text: scene[SEARCH_FIELDS[Math.min(firstField, SEARCH_FIELDS.length - 1)][1]] || ""});
+  }));
+  return hits.sort((a, b) => a.score - b.score);
+}
+
+function renderSearch() {
+  const q = $("#searchInput").value.trim(), meta = $("#searchMeta"), box = $("#searchResults");
+  if (!q) {
+    const prompts = projects.reduce((n, p) => n + scenesOf(p).length, 0);
+    meta.textContent = `${prompts} prompt${prompts===1?"":"s"} in ${projects.length} project${projects.length===1?"":"s"}`;
+    box.innerHTML = '<p class="sheet-hint">Searches image prompts, video prompts and style suffixes across ALL projects at once. Every word has to match.</p>';
+    return;
+  }
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = searchScenes(terms), inProjects = new Set(hits.map(h => h.proj.id)).size;
+  meta.textContent = hits.length
+    ? `${hits.length} prompt${hits.length===1?"":"s"} in ${inProjects} project${inProjects===1?"":"s"}`
+    : `No match for “${q}”`;
+  box.innerHTML = hits.slice(0, SEARCH_LIMIT).map(h => `
+    <div class="search-item" data-proj="${esc(h.proj.id)}" data-scene="${esc(h.scene.id)}">
+      <div class="search-proj">${esc(h.proj.name)}</div>
+      <div class="search-name">${highlight(h.name, terms)}</div>
+      ${h.tags.map(t => `<span class="tag">${t}</span>`).join("")}
+      <div class="search-snip">${highlight(snippet(h.text, terms), terms)}</div>
+    </div>`).join("")
+    + (hits.length > SEARCH_LIMIT ? `<p class="sheet-hint" style="text-align:center;margin-top:8px;">+${hits.length - SEARCH_LIMIT} more – refine your search</p>` : "")
+    || '<p class="sheet-hint">Nothing found. Try fewer words.</p>';
+}
+
+/* Loads that project + prompt where you stand: the sheet closes over the editor, nothing navigates */
+function openSceneFrom(projId, sceneId) {
+  const proj = projects.find(p => p.id === projId);
+  if (!proj || !proj.scenes.some(s => s.id === sceneId)) return;
+  saveCurrentScene();
+  currentProjectId = projId;
+  currentSceneId = sceneId;
+  saveData();
+  closeSheets();
+  showEditor();
+  renderCurrentProjectName();
+  renderScenes();     // this also scrolls the strip to the newly active card
+  loadCurrentScene();
+}
+
+window.openSearch = () => {
+  saveCurrentScene();   // make sure what is on screen is part of the index
+  openSheet("#searchSheet");
+  renderSearch();
+  setTimeout(() => $("#searchInput").focus({preventScroll: true}), 300);   // let the sheet finish sliding in
+};
+
+/* ====================== ORGANISE PROMPTS (move / copy to another project) ====================== */
+function currentScene() {
+  const proj = projects.find(p => p.id === currentProjectId);
+  return proj ? proj.scenes.find(s => s.id === currentSceneId) : null;
+}
+
+window.openMoveSheet = () => {
+  const scene = currentScene();
+  if (!scene) return;
+  saveCurrentScene();   // capture edits that have not reached the autosave yet
+  $("#moveSceneName").textContent = getSceneDisplayName(scene);
+  renderMoveList();
+  openSheet("#moveSheet");
+};
+
+function renderMoveList() {
+  const rows = projects.filter(p => p.id !== currentProjectId).map(p => {
+    const n = scenesOf(p).length;
+    return `
+    <div class="move-row">
+      <div style="flex:1;">
+        <div class="move-name">${esc(p.name)}</div>
+        <div class="move-count">${n} prompt${n===1?"":"s"}</div>
+      </div>
+      <div class="move-btns">
+        <button data-target="${esc(p.id)}" data-mode="move" style="background:var(--primary);">📦 Move</button>
+        <button data-target="${esc(p.id)}" data-mode="copy" style="background:#f2b824;">📋 Copy</button>
+      </div>
+    </div>`;
+  }).join("");
+  $("#moveList").innerHTML = rows + `
+    <div class="move-row">
+      <div style="flex:1;">
+        <div class="move-name">＋ New project</div>
+        <div class="move-count">Create one and drop the prompt in there</div>
+      </div>
+      <div class="move-btns"><button data-target="__new" data-mode="move" style="background:var(--success);">Create</button></div>
+    </div>`;
+}
+
+/* Clones `scene` at the very END of `target` - display order respected, fresh id, history carried over */
+function appendSceneTo(target, scene) {
+  const list = scenesOf(target);   // already sorted, so pushing really lands after the last card
+  target.scenes = list;
+  const clone = JSON.parse(JSON.stringify(scene));
+  clone.id = uuid();               // a fresh id keeps currentSceneId from ever pointing into another project
+  clone.order = list.length;
+  list.push(clone);
+  return clone;
+}
+
+window.moveSceneTo = (targetId, mode) => {
+  const src = projects.find(p => p.id === currentProjectId);
+  const scene = currentScene();
+  const target = projects.find(p => p.id === targetId);
+  if (!src || !scene || !target || target === src) return;
+  saveCurrentScene();
+  appendSceneTo(target, scene);
+  if (mode === "move") {
+    const ordered = scenesOf(src), fromIdx = ordered.findIndex(s => s.id === scene.id);
+    src.scenes = ordered.filter(s => s.id !== scene.id);
+    src.scenes.forEach((s, i) => s.order = i);
+    if (!src.scenes.length) src.scenes.push(createScene(0));   // never leave a project without a prompt
+    currentSceneId = (src.scenes[fromIdx] || src.scenes[fromIdx - 1] || src.scenes[0]).id;
+  }
+  closeSheets();
+  saveData();
+  renderScenes();
+  loadCurrentScene();
+  alert(`✅ ${mode === "move" ? "Moved" : "Copied"} to “${target.name}” – it is the last prompt there.`);
+};
+
+/* Fallback for when there is no other project yet: make one and move straight into it */
+window.newProjectFromPrompt = mode => {
+  const name = ((prompt("Name of the new project?", "New Storyboard")) || "").trim();
+  if (!name) return;
+  const proj = {id: uuid(), name, scenes: [], variableGroups: [{name: "Default", variables: {}}], activeGroupIndex: 0};
+  projects.push(proj);
+  moveSceneTo(proj.id, mode);
+};
+
+/* Delegated listeners: ids loaded from imported files may contain quotes and must never reach an inline handler */
+function attachSheetListeners() {
+  $("#searchBtn").addEventListener("click", openSearch);
+  $("#scrim").addEventListener("click", closeSheets);
+  $("#searchInput").addEventListener("input", renderSearch);
+
+  $("#searchResults").addEventListener("click", e => {
+    const item = e.target.closest(".search-item");
+    if (item) openSceneFrom(item.dataset.proj, item.dataset.scene);
+  });
+
+  $("#moveList").addEventListener("click", e => {
+    const btn = e.target.closest("button[data-target]");
+    if (!btn) return;
+    if (btn.dataset.target === "__new") newProjectFromPrompt(btn.dataset.mode);
+    else moveSceneTo(btn.dataset.target, btn.dataset.mode);
+  });
+
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    const input = $("#searchInput");
+    if (e.target === input && input.value) { input.value = ""; renderSearch(); return; }   // first Esc clears the text, second closes
+    closeSheets();
+  });
+}
+
 /* ====================== INIT ====================== */
 function init() {
   loadData();
@@ -960,6 +1204,8 @@ function init() {
   $("#clearAllData").addEventListener("click", () => {
     if(confirm("DELETE EVERYTHING?") && confirm("LAST CHANCE")) { localStorage.clear(); location.reload(); }
   });
+
+  attachSheetListeners();   // search + move sheets: buttons live in the markup, listeners stay delegated
 
   /* iOS Safari can kill a backgrounded tab at any time - never rely on the autosave timer alone */
   ["pagehide", "visibilitychange", "beforeunload"].forEach(ev => window.addEventListener(ev, () => {
