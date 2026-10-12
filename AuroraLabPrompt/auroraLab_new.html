@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Aurora Lab v3.5</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#58a6ff">
+  <style>
+    :root {--bg:#0d1117;--surface:#161b22;--primary:#58a6ff;--text:#f0f6fc;--text-dim:#8b949e;--border:#30363d;--danger:#f85149;--success:#28a745;}
+    [data-theme="light"] {--bg:#ffffff;--surface:#f6f8fa;--primary:#0969da;--text:#1f2328;--text-dim:#656d76;--border:#d0d7de;--danger:#cf222e;--success:#2ea44f;}
+    *{margin:0;padding:0;box-sizing:border-box;}
+    button,[class*="btn"],.menu-item,.scene-card,.group-tab{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding-top:58px;padding-bottom:90px;overflow-x:hidden;}
+    header{position:fixed;top:0;left:0;right:0;height:56px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;z-index:1000;}
+    .logo{font-weight:800;font-size:18px;}
+    #headerCenter{flex:1;display:flex;justify-content:center;align-items:center;gap:12px;}
+    #currentProjectName{font-size:17px;font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;}
+    #wordCount{font-size:13px;color:var(--text-dim);}
+    .menu-btn{width:44px;height:44px;cursor:pointer;position:relative;}
+    .menu-btn span,.menu-btn span::before,.menu-btn span::after{display:block;width:24px;height:2px;background:var(--text);position:absolute;left:10px;top:21px;transition:.3s;}
+    .menu-btn span::before{content:'';top:-8px;}.menu-btn span::after{content:'';top:8px;}
+
+    #scenesStrip{display:flex;gap:12px;overflow-x:auto;padding:16px;background:var(--bg);scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;}
+    #scenesStrip::-webkit-scrollbar{display:none;}
+    .scene-card{min-width:168px;height:132px;background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;cursor:grab;transition:.2s;position:relative;}
+    .scene-card.active{border-color:var(--primary);box-shadow:0 0 0 3px rgba(88,166,255,0.3);}
+    .scene-title{font-weight:600;margin-bottom:4px;font-size:15px;line-height:1.3;}
+    .scene-preview{font-size:12.5px;color:var(--text-dim);flex:1;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}
+    .drag-handle{font-size:22px;color:var(--text-dim);width:28px;cursor:grab;margin-right:8px;user-select:none;}
+    .scene-actions{position:absolute;bottom:8px;right:8px;display:flex;gap:4px;transition:.2s;}
+    .scene-action-btn{background:rgba(0,0,0,0.6);color:#fff;width:30px;height:30px;border-radius:50%;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .scene-action-btn[disabled]{opacity:.25;pointer-events:none;}
+    /* Hover-reveal only where hover exists - on touch the buttons must stay visible */
+    @media (hover:hover){.scene-actions{opacity:0}.scene-card:hover .scene-actions,.scene-card.active .scene-actions{opacity:1;}}
+    .scene-card.dragging{opacity:.4;}
+    .scene-card.drag-over{border-color:var(--primary);transform:scale(1.04);}
+    /* Drag & drop cannot work on touch, so hide the handle and give the buttons that space */
+    @media (hover:none){.drag-handle{display:none;}}
+
+    .page{display:none;}.page.active{display:block;}
+    body.subpage #scenesStrip,body.subpage .fab{display:none;}
+    .section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin:0 16px 0 0px;}
+    label{display:block;margin:16px 0 8px;font-size:14px;color:var(--text-dim);}
+    textarea{width:100%;background:#010409;border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);font-size:16px;resize:none;min-height:120px;line-height:1.4;}
+    [data-theme="light"] textarea{background:#fff;color:#1f2328;}
+
+    .style-suffix-input{margin-top:12px;}
+    .history-panel{margin-top:24px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;}
+    .history-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+    .history-item{display:flex;align-items:center;padding:10px;border-radius:8px;cursor:pointer;margin-bottom:6px;font-size:13px;position:relative;}
+    .history-item:hover{background:rgba(88,166,255,0.15);}
+    .history-item.active{background:var(--primary);color:#000;}
+    .history-text{flex:1;overflow:hidden;}
+    .retain-btn{background:none;border:none;font-size:20px;cursor:pointer;padding:4px;margin-left:8px;}
+    .retain-btn.retained{color:#f2b824;}
+
+    .fab{position:fixed;right:20px;bottom:40px;width:56px;height:56px;background:var(--primary);color:#000;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 4px 20px rgba(88,166,255,0.5);z-index:999;cursor:pointer;}
+
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1100;opacity:0;visibility:hidden;transition:.3s;}
+    .overlay.active{opacity:1;visibility:visible;}
+    /* 88vw max so the drawer never exceeds a small phone viewport */
+    .sidebar{position:fixed;top:0;left:-370px;width:min(350px,88vw);height:100dvh;background:var(--surface);padding:70px 20px 20px;transition:.3s;z-index:1200;border-right:1px solid var(--border);overflow-y:auto;}
+    .sidebar.active{left:0;}
+    .menu-item{padding:16px;border-radius:8px;cursor:pointer;margin-bottom:8px;}
+    .menu-item:hover{background:rgba(88,166,255,0.15);}
+
+    .var-row{display:flex;gap:8px;margin-bottom:12px;}
+    .var-row input{width:140px;}
+    .var-row textarea{flex:1;min-height:80px;}
+
+    #projectsPage,#variablesPage,#templatesPage{padding:0 16px 20px;}   /* inner wrapper already offsets the header */
+    .project-list-item,.template-item{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+    .back-btn{position:fixed;top:70px;left:16px;background:var(--surface);padding:18px 24px;border-radius:8px;font-size:20px;z-index:900;box-shadow:0 2px 10px rgba(0,0,0,0.4);cursor:pointer;}
+    .group-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+    .group-tab{padding:8px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;}
+    .group-tab.active{background:var(--primary);color:#000;}
+
+    .icon-btn{width:40px;height:40px;background:none;border:none;color:var(--text);font-size:19px;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center;}
+
+    /* ====================== BOTTOM SHEETS (shared by search + move) ====================== */
+    .scrim{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1250;opacity:0;visibility:hidden;transition:.25s;}
+    .scrim.active{opacity:1;visibility:visible;}
+    .sheet{position:fixed;left:0;right:0;bottom:0;z-index:1300;background:var(--surface);border-top:1px solid var(--border);border-radius:16px 16px 0 0;max-height:86dvh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .28s ease;box-shadow:0 -8px 30px rgba(0,0,0,0.5);}
+    .sheet.active{transform:translateY(0);}
+    .sheet-head{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);}
+    .sheet-title{flex:1;font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .sheet-close{background:var(--bg);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;flex:none;}
+    .sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px calc(20px + env(safe-area-inset-bottom));}
+    .sheet-hint{font-size:13px;color:var(--text-dim);line-height:1.5;}
+    body.sheet-open{overflow:hidden;}
+
+    /* Search */
+    #searchInput{flex:1;min-width:0;background:#010409;border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-size:16px;}   /* 16px stops iOS zooming on focus */
+    [data-theme="light"] #searchInput{background:#fff;color:#1f2328;}
+    .search-meta{font-size:12px;color:var(--text-dim);margin:2px 0 10px;}
+    .search-item{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;cursor:pointer;}
+    .search-item:active{border-color:var(--primary);}
+    .search-proj{font-size:11px;color:var(--primary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px;overflow-wrap:anywhere;}
+    .search-name{font-weight:600;font-size:14px;margin-bottom:6px;overflow-wrap:anywhere;}
+    .search-snip{font-size:13px;line-height:1.45;color:var(--text-dim);word-break:break-word;}
+    .search-item mark{background:#f2b824;color:#000;border-radius:3px;padding:0 2px;}
+    .tag{display:inline-block;font-size:10px;padding:2px 6px;border-radius:4px;background:var(--border);margin:0 4px 6px 0;}
+
+    /* Move to project */
+    .move-row{display:flex;align-items:center;gap:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;}
+    .move-name{font-weight:600;font-size:15px;overflow-wrap:anywhere;}
+    .move-count{font-size:12px;color:var(--text-dim);}
+    .move-btns{display:flex;gap:8px;flex:none;}
+    .move-btns button{min-width:64px;padding:10px 14px;border:none;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;color:#000;}
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">A-LAB</div>
+  <div id="headerCenter">
+    <div id="currentProjectName" onclick="showProjectsPage()">My Storyboard</div>
+    <div id="wordCount">0 words</div>
+  </div>
+  <button class="icon-btn" id="searchBtn" title="Search prompts" aria-label="Search prompts">🔍</button>
+  <div class="menu-btn" id="menuBtn"><span></span></div>
+</header>
+
+<div id="scenesStrip"></div>
+
+<div id="editorPage" class="page active" style="padding:16px 16px 100px;">
+  <div class="section">
+    <label>Image Prompt</label>
+    <textarea id="imagePrompt" placeholder="A cyberpunk fox hacker sitting at a holographic terminal..."></textarea>
+
+    <label>Video Prompt</label>
+    <textarea id="videoPrompt" placeholder="Same scene but with smooth camera pan..."></textarea>
+
+    <div class="style-suffix-input">
+      <label>Style Suffix <span style="font-size:12px;color:var(--text-dim);">(appended to both)</span></label>
+      <input id="styleSuffix" type="text" placeholder="cinematic lighting, 8k, ultra detailed" style="width:100%;background:#010409;border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);font-size:16px;">
+      <button onclick="applyStyleToAll()" style="margin-top:8px;width:100%;padding:10px;background:var(--primary);color:#000;border:none;border-radius:8px;">Apply this style to ALL scenes</button>
+    </div>
+
+    <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button onclick="copyPrompt('image', this)" style="flex:1;min-width:130px;padding:14px;background:var(--primary);color:#000;border:none;border-radius:10px;font-weight:600;">📸 Copy Image</button>
+      <button onclick="copyPrompt('video', this)" style="flex:1;min-width:130px;padding:14px;background:var(--primary);color:#000;border:none;border-radius:10px;font-weight:600;">🎥 Copy Video</button>
+      <button onclick="copyPrompt('both', this)" style="flex:1;min-width:130px;padding:14px;background:var(--success);color:#000;border:none;border-radius:10px;font-weight:600;">📋 Copy Both</button>
+      <button onclick="saveAsTemplate()" style="flex:1;padding:14px;background:#f2b824;color:#000;border:none;border-radius:10px;font-weight:600;">💾 Save as Template</button>
+    </div>
+    <button onclick="openMoveSheet()" style="margin-top:8px;width:100%;padding:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;font-weight:600;">📦 Move to another project</button>
+
+    <div id="previewCombined" style="margin-top:20px;font-family:monospace;font-size:13px;background:#010409;border:1px solid var(--border);border-radius:8px;padding:12px;min-height:80px;white-space:pre-wrap;color:var(--text-dim);"></div>
+  </div>
+
+  <div class="history-panel">
+    <div class="history-header">
+      <strong>Version History</strong>
+      <div>
+        <span id="historyCount" style="font-size:13px;color:var(--text-dim);">0 versions</span>
+        <button onclick="clearNonRetainedVersions()" style="margin-left:12px;padding:4px 10px;background:var(--danger);color:#fff;border:none;border-radius:6px;font-size:12px;">🗑 Clear all</button>
+      </div>
+    </div>
+    <div id="historyList"></div>
+  </div>
+</div>
+
+<!-- Projects Page -->
+<div id="projectsPage" class="page">
+  <div class="back-btn" onclick="hideProjectsPage()">← Back</div>
+  <div style="padding:90px 16px 20px;">
+    <div style="font-size:20px;font-weight:700;margin-bottom:20px;">All Projects</div>
+    <div id="projectsList"></div>
+    <button onclick="newProjectFromList()" style="margin-top:20px;width:100%;padding:14px;background:var(--success);color:#000;border:none;border-radius:10px;font-size:16px;">+ New Project</button>
+  </div>
+</div>
+
+<!-- Variables Page -->
+<div id="variablesPage" class="page">
+  <div class="back-btn" onclick="hideVariablesPage()">← Back</div>
+  <div style="padding:90px 16px 20px;">
+    <div style="font-size:20px;font-weight:700;margin-bottom:12px;">Global Variables</div>
+    <div id="groupTabs" class="group-tabs"></div>
+    <button onclick="addVariableGroup()" style="margin-bottom:16px;padding:8px 16px;background:var(--success);color:#000;border:none;border-radius:8px;">+ New Group</button>
+    <div id="variablesList"></div>
+    <button onclick="addNewVariable()" style="margin-top:20px;width:100%;padding:14px;background:var(--success);color:#000;border:none;border-radius:10px;">+ Add Variable Key</button>
+  </div>
+</div>
+
+<!-- Templates Page -->
+<div id="templatesPage" class="page">
+  <div class="back-btn" onclick="hideTemplatesPage()">← Back</div>
+  <div style="padding:90px 16px 20px;">
+    <div style="font-size:20px;font-weight:700;margin-bottom:20px;">Global Templates</div>
+    <div id="templatesList"></div>
+  </div>
+</div>
+
+<div class="fab" id="newSceneBtn" title="New Scene">+</div>
+
+<div class="overlay" id="overlay"></div>
+<div class="sidebar" id="sidebar">
+  <div style="padding:10px 0px">Aurora Lab <span style="font-size:12px;opacity:0.7;">v3.5</span></div>
+  <div class="menu-item" onclick="openSearch()">🔍 Search Prompts</div>
+  <div class="menu-item" id="toggleTheme">🌙 Light / Dark</div>
+  <div class="menu-item" onclick="showVariablesPage()">🔄 Variables Manager</div>
+  <div class="menu-item" onclick="showTemplatesPage()">📋 Global Templates</div>
+  <div style="padding:10px 0px">💾 Export</div>
+  <div class="menu-item" onclick="exportCurrentProject()">Export Current Project (to file)</div>
+  <div class="menu-item" onclick="exportAllData()">Download All Data (to file)</div>
+  <div class="menu-item" id="exportAll">Export Everything (copy to clipboard)</div>
+  <div style="padding:10px 0px">📥 Import</div>
+  <div class="menu-item" onclick="importProjectFromFile()">Import Project from File</div>
+  <div class="menu-item" onclick="showFileImport()">Import All from File</div>
+  <div class="menu-item" id="importAll">Import Legacy (copy & paste)</div>
+  <div style="padding:10px 0px;color:var(--danger);">☢️ Danger Zone</div>
+  <div class="menu-item" id="clearAllData" style="color:var(--danger);">☢️ Clear ALL Data</div>
+</div>
+
+<input type="file" id="fileImportInput" accept=".json" style="display:none;">
+
+<!-- Bottom sheets. They float over the current page: nothing navigates until you tap a result / a project -->
+<div class="scrim" id="scrim"></div>
+
+<div class="sheet" id="searchSheet" role="dialog" aria-modal="true" aria-label="Search prompts">
+  <div class="sheet-head">
+    <input id="searchInput" type="search" placeholder="Search all prompts…" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Search prompts">
+    <button class="sheet-close" onclick="closeSheets()" aria-label="Close search">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="search-meta" id="searchMeta"></div>
+    <div id="searchResults"></div>
+  </div>
+</div>
+
+<div class="sheet" id="moveSheet" role="dialog" aria-modal="true" aria-label="Move prompt to another project">
+  <div class="sheet-head">
+    <div class="sheet-title">Move “<span id="moveSceneName"></span>”</div>
+    <button class="sheet-close" onclick="closeSheets()" aria-label="Close">✕</button>
+  </div>
+  <div class="sheet-body">
+    <p class="sheet-hint" style="margin-bottom:12px;"><strong>Move</strong> takes it out of this project, <strong>Copy</strong> keeps a duplicate here — either way it lands at the end of the target project.</p>
+    <div id="moveList"></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = v => String(v ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const trunc = (v, n) => { const s = String(v ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+const NAME_RE = /^\w+$/;   // variable keys must stay usable inside ${...} placeholders
+let projects = [], globalTemplates = [], currentProjectId = null, currentSceneId = null, autoSaveTimeout = null;
+const localStorageID = "auroraProjectsV332";
+
+function uuid() { return 'x' + Math.random().toString(36).substr(2,9) + Date.now().toString(36); }
+
+function smartNow() {
+    const now = new Date();
+    return now.toISOString().slice(0,19);
+}
+
+function loadData() {
+  const saved = localStorage.getItem(localStorageID);
+  if (saved) {
+    try {
+      const data = JSON.parse(saved);
+      projects = Array.isArray(data.projects) ? data.projects : [];
+      globalTemplates = Array.isArray(data.globalTemplates) ? data.globalTemplates : [];
+    } catch (e) {
+      console.error("Corrupt saved data - starting fresh", e);
+      localStorage.removeItem(localStorageID);
+    }
+  }
+  currentProjectId = localStorage.getItem("currentProjectId") || (projects[0]?.id || null);
+  currentSceneId = localStorage.getItem("currentSceneId") || (projects[0]?.scenes[0]?.id || null);
+  if (!projects.length) createDefaultProject();
+  migrateOldVariables();
+}
+
+/* Old saves stored a flat `variables` object instead of groups */
+function migrateOldVariables() {
+  projects.forEach(proj => {
+    if (proj.variables && !proj.variableGroups) {
+      proj.variableGroups = [{ name: "Default", variables: proj.variables }];
+      delete proj.variables;
+    }
+    ensureVariableGroups(proj);
+  });
+}
+
+/* Guarantees every access to variable groups is safe (imported files may miss them) */
+function ensureVariableGroups(proj) {
+  if (!Array.isArray(proj.variableGroups) || !proj.variableGroups.length) proj.variableGroups = [{ name: "Default", variables: {} }];
+  if (!proj.variableGroups[proj.activeGroupIndex]) proj.activeGroupIndex = 0;
+  return proj.variableGroups;
+}
+
+function createDefaultProject() {
+  const proj = {id:uuid(),name:"My Storyboard",scenes:[createScene(0)],variableGroups:[{name:"Default",variables:{}}],activeGroupIndex:0};
+  projects.push(proj);
+  currentProjectId = proj.id;
+  currentSceneId = proj.scenes[0].id;
+}
+
+function saveData() {
+  localStorage.setItem(localStorageID, JSON.stringify({projects, globalTemplates}));
+  localStorage.setItem("currentProjectId", currentProjectId);
+  localStorage.setItem("currentSceneId", currentSceneId);
+}
+
+function getSceneDisplayName(scene) {
+  if (!scene.imagePrompt) return `Scene ${scene.order + 1}`;
+  return trunc(scene.imagePrompt.split("\n")[0].trim(), 45);
+}
+
+function getActiveVariables(proj) {
+  return ensureVariableGroups(proj)[proj.activeGroupIndex].variables || {};
+}
+
+/* Current project's scenes, always in display order (same array reference, so splices stick) */
+function getScenes() {
+  const proj = projects.find(p => p.id === currentProjectId);
+  return proj ? proj.scenes.sort((a,b) => (a.order ?? 0) - (b.order ?? 0)) : [];
+}
+
+const createScene = order => ({id:uuid(), order, imagePrompt:"", videoPrompt:"", styleSuffix:"", history:[]});
+
+/* ====================== SCENES ====================== */
+function renderScenes() {
+  const proj = projects.find(p => p.id === currentProjectId);
+  if (!proj) return;
+  const scenes = getScenes();
+  $("#scenesStrip").innerHTML = scenes.map((s, i) => `
+    <div class="scene-card ${s.id===currentSceneId?'active':''}" data-id="${s.id}" draggable="true">
+      <div class="drag-handle" title="Drag to reorder (desktop)">≡</div>
+      <div style="flex:1">
+        <div class="scene-title">${esc(getSceneDisplayName(s))}</div>
+        <div class="scene-preview">${s.imagePrompt ? esc(s.imagePrompt.slice(0,80)) + '…' : 'Empty'}</div>
+      </div>
+      <div class="scene-actions">
+        <div class="scene-action-btn" title="Move left" ${i===0?'disabled':''} onclick="event.stopImmediatePropagation();moveScene('${s.id}',-1);">◀</div>
+        <div class="scene-action-btn" title="Move right" ${i===scenes.length-1?'disabled':''} onclick="event.stopImmediatePropagation();moveScene('${s.id}',1);">▶</div>
+        <div class="scene-action-btn" title="Duplicate" onclick="event.stopImmediatePropagation();duplicateScene('${s.id}');">📋</div>
+        <div class="scene-action-btn" title="Delete" onclick="event.stopImmediatePropagation();deleteScene('${s.id}');" style="background:rgba(248,81,73,0.8)">🗑</div>
+      </div>
+    </div>
+  `).join('');
+  attachDragListeners();
+  const active = $(".scene-card.active");
+  if (active) active.scrollIntoView({behavior:"smooth", inline:"center", block:"nearest"});
+}
+
+function attachDragListeners() {
+  const strip = $("#scenesStrip");
+  strip.ondragstart = e => { const card = e.target.closest(".scene-card"); if(!card) return; e.dataTransfer.setData("text/plain", card.dataset.id); card.classList.add("dragging"); };
+  strip.ondragover = e => { e.preventDefault(); const card = e.target.closest(".scene-card"); if(card) card.classList.add("drag-over"); };
+  strip.ondragleave = e => { const card = e.target.closest(".scene-card"); if(card) card.classList.remove("drag-over"); };
+  strip.ondrop = e => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain");
+    const targetCard = e.target.closest(".scene-card");
+    if (!targetCard || draggedId === targetCard.dataset.id) return;
+    const scenes = getScenes();
+    reorderScenes(scenes.findIndex(s => s.id === draggedId), scenes.findIndex(s => s.id === targetCard.dataset.id));
+  };
+  strip.ondragend = () => $$(".scene-card").forEach(c => c.classList.remove("dragging","drag-over"));
+}
+
+window.duplicateScene = id => {
+  const proj = projects.find(p => p.id === currentProjectId);
+  const orig = proj.scenes.find(s => s.id === id);
+  const copy = JSON.parse(JSON.stringify(orig));
+  copy.id = uuid();
+  copy.order = proj.scenes.length;
+  proj.scenes.push(copy);
+  currentSceneId = copy.id;
+  saveData();
+  renderScenes();
+  loadCurrentScene();
+};
+
+/* Touch-friendly reorder (HTML5 drag & drop never fires on mobile browsers) */
+window.moveScene = (id, dir) => {
+  const idx = getScenes().findIndex(s => s.id === id);
+  reorderScenes(idx, idx + dir);
+};
+
+/* Single source of truth for reordering: used by the ◀ ▶ buttons and by drag & drop */
+function reorderScenes(fromIdx, toIdx) {
+  const scenes = getScenes();
+  if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx || toIdx >= scenes.length) return;
+  const [moved] = scenes.splice(fromIdx, 1);
+  scenes.splice(toIdx, 0, moved);
+  scenes.forEach((s,i) => s.order = i);
+  saveData();
+  renderScenes();
+}
+
+window.deleteScene = id => {
+  if (!confirm("Delete this scene permanently?")) return;
+  const proj = projects.find(p => p.id === currentProjectId);
+  proj.scenes = proj.scenes.filter(s => s.id !== id);
+  if (proj.scenes.length === 0) {
+    const newS = createScene(0);
+    proj.scenes.push(newS);
+    currentSceneId = newS.id;
+  } else if (currentSceneId === id) currentSceneId = proj.scenes[0].id;
+  proj.scenes.forEach((s,i)=>s.order=i);
+  saveData();
+  renderScenes();
+  loadCurrentScene();
+};
+
+/* ====================== PROJECTS ====================== */
+function renderCurrentProjectName() {
+  const proj = projects.find(p => p.id === currentProjectId);
+  $("#currentProjectName").textContent = proj ? proj.name : "No Project";
+}
+
+/* Only one page is visible at a time; editor-related chrome hides while a sub-page is open */
+function showPage(id) {
+  $(".page.active")?.classList.remove("active");
+  $(id).classList.add("active");
+  document.body.classList.toggle("subpage", id !== "#editorPage");
+}
+const showEditor = () => showPage("#editorPage");
+
+function showProjectsPage() { saveCurrentScene(); showPage("#projectsPage"); renderProjectsList(); }
+function hideProjectsPage() { showEditor(); }
+
+function renderProjectsList() {
+  $("#projectsList").innerHTML = projects.map(p => `
+    <div class="project-list-item" onclick="switchProject('${p.id}');hideProjectsPage();">
+      <div class="project-list-name">${esc(p.name)}</div>
+      <div>
+        <button onclick="event.stopImmediatePropagation();renameProject('${p.id}');" style="background:#28a745;color:#fff;padding:6px 12px;border:none;border-radius:6px;font-size:13px;">Ren.</button>
+        <button onclick="event.stopImmediatePropagation();duplicateProject('${p.id}');" style="background:#f2b824;color:#000;padding:6px 12px;border:none;border-radius:6px;font-size:13px;">📋</button>
+        <button onclick="event.stopImmediatePropagation();deleteProject('${p.id}');" style="background:var(--danger);color:#fff;padding:6px 12px;border:none;border-radius:20px;font-size:13px;">🗑</button>
+      </div>
+    </div>
+  `).join('') || '<p style="color:var(--text-dim);text-align:center;">No projects yet</p>';
+}
+
+window.renameProject = id => {
+  const proj = projects.find(p => p.id === id);
+  const newName = prompt("New project name?", proj.name);
+  if (newName && newName.trim()) {
+    proj.name = newName.trim();
+    saveData();
+    renderProjectsList();
+    if (id === currentProjectId) renderCurrentProjectName();
+  }
+};
+
+window.duplicateProject = id => {
+  const orig = projects.find(p => p.id === id);
+  const copy = JSON.parse(JSON.stringify(orig));
+  copy.id = uuid();
+  copy.name += " (copy)";
+  projects.push(copy);
+  saveData();
+  renderProjectsList();
+};
+
+window.deleteProject = id => {
+  if (!confirm("Delete this project and ALL its scenes?")) return;
+  projects = projects.filter(p => p.id !== id);
+  if (projects.length === 0) createDefaultProject();
+  if (currentProjectId === id) {
+    currentProjectId = projects[0].id;
+    currentSceneId = projects[0].scenes[0].id;
+  }
+  saveData();
+  renderProjectsList();
+  renderCurrentProjectName();
+  renderScenes();
+  loadCurrentScene();
+};
+
+window.newProjectFromList = () => {
+  const name = prompt("Project name?", "New Storyboard") || "Untitled";
+  const proj = {id:uuid(),name,scenes:[createScene(0)],variableGroups:[{name:"Default",variables:{}}],activeGroupIndex:0};
+  projects.push(proj);
+  currentProjectId = proj.id;
+  currentSceneId = proj.scenes[0].id;
+  saveData();
+  renderProjectsList();
+  renderCurrentProjectName();
+  hideProjectsPage();
+  renderScenes();
+  loadCurrentScene();
+};
+
+window.switchProject = id => {
+  saveCurrentScene();
+  currentProjectId = id;
+  const proj = projects.find(p => p.id === id);
+  currentSceneId = proj.scenes[0]?.id || null;
+  saveData();
+  renderCurrentProjectName();
+  renderScenes();
+  loadCurrentScene();
+};
+
+/* ====================== EDITOR ====================== */
+function loadCurrentScene() {
+  const proj = projects.find(p => p.id === currentProjectId);
+  let scene = proj.scenes.find(s => s.id === currentSceneId) || proj.scenes[0];
+  if (!scene) return;
+  $("#imagePrompt").value = scene.imagePrompt || "";
+  $("#videoPrompt").value = scene.videoPrompt || "";
+  $("#styleSuffix").value = scene.styleSuffix || "";
+  autoResizeTextareas();
+  renderHistory(scene);
+  updatePreview();
+}
+
+function saveCurrentScene() {
+  const proj = projects.find(p => p.id === currentProjectId);
+  const scene = proj.scenes.find(s => s.id === currentSceneId);
+  if (!scene) return;
+  scene.imagePrompt = $("#imagePrompt").value.trim();
+  scene.videoPrompt = $("#videoPrompt").value.trim();
+  scene.styleSuffix = $("#styleSuffix").value.trim();
+  saveData();
+}
+
+function autoResizeTextareas() {
+  ["#imagePrompt","#videoPrompt"].forEach(sel => {
+    const el = $(sel);
+    el.style.height = "auto";
+    el.style.height = Math.max(120, el.scrollHeight) + "px";
+  });
+}
+
+function replaceVariables(text, variables) {
+  return text.replace(/\$\{(\w+)\}/g, (match, key) => variables[key] !== undefined ? variables[key] : match);
+}
+
+/* Resolve ${vars} + append the style suffix. Shared by the live preview and by copy-to-clipboard */
+function buildPrompts() {
+  const vars = getActiveVariables(projects.find(p => p.id === currentProjectId));
+  let img = replaceVariables($("#imagePrompt").value.trim(), vars);
+  let vid = replaceVariables($("#videoPrompt").value.trim(), vars);
+  const suffix = $("#styleSuffix").value.trim();
+  if (suffix) {
+    img = img ? img + "\n" + suffix : suffix;
+    vid = vid ? vid + "\n" + suffix : suffix;
+  }
+  return {img, vid};
+}
+
+function updatePreview() {
+  const {img, vid} = buildPrompts();
+  $("#previewCombined").textContent = img && vid ? `IMAGE:\n${img}\n\nVIDEO:\n${vid}` : img || vid || "Build your prompts above ↑";
+  const w = (img + " " + vid).trim().split(/\s+/).filter(Boolean).length;
+  $("#wordCount").textContent = `${w} word${w===1?"":"s"}`;
+}
+
+/* History functions (kept from previous version) */
+function renderHistory(scene) {
+  const history = scene.history = Array.isArray(scene.history) ? scene.history : [];
+  $("#historyList").innerHTML = history.map((v, i) => `
+    <div class="history-item ${i===0?'active':''}" onclick="restoreVersion(${i})">
+      <div class="history-text">
+        <strong>${new Date(v.timestamp).toLocaleString()}</strong><br>
+        <span style="font-size:12px;color:var(--text-dim)">Image: ${esc(trunc(v.imagePrompt, 35))} • Video: ${esc(trunc(v.videoPrompt, 35))}</span>
+      </div>
+      <button onclick="event.stopImmediatePropagation();toggleRetain(${i});" class="retain-btn ${v.retained?'retained':''}">${v.retained ? '🔒' : '📌'}</button>
+    </div>
+  `).join('') || '<div style="padding:12px;color:var(--text-dim);text-align:center;">No saved versions yet</div>';
+  $("#historyCount").textContent = `${history.length} version${history.length===1?"":"s"}`;
+}
+
+window.toggleRetain = index => {
+  const proj = projects.find(p => p.id === currentProjectId);
+  const scene = proj.scenes.find(s => s.id === currentSceneId);
+  scene.history[index].retained = !scene.history[index].retained;
+  saveData();
+  renderHistory(scene);
+};
+
+window.clearNonRetainedVersions = () => {
+  if (!confirm("Delete all non-protected versions?")) return;
+  const proj = projects.find(p => p.id === currentProjectId);
+  const scene = proj.scenes.find(s => s.id === currentSceneId);
+  scene.history = scene.history.filter(v => v.retained);
+  saveData();
+  renderHistory(scene);
+};
+
+window.restoreVersion = index => {
+  const proj = projects.find(p => p.id === currentProjectId);
+  const scene = proj.scenes.find(s => s.id === currentSceneId);
+  const version = scene.history[index];
+  if (!version) return;
+  pushHistory(scene);            // keep the edits that are on screen before overwriting them
+  scene.imagePrompt = version.imagePrompt;
+  scene.videoPrompt = version.videoPrompt;
+  scene.styleSuffix = version.styleSuffix || "";
+  loadCurrentScene();
+  saveData();
+};
+
+/* Stores the raw editor state in history. Returns false if identical to the newest entry */
+function pushHistory(scene) {
+  scene.history = Array.isArray(scene.history) ? scene.history : [];
+  const state = {
+    imagePrompt: $("#imagePrompt").value.trim(),
+    videoPrompt: $("#videoPrompt").value.trim(),
+    styleSuffix: $("#styleSuffix").value.trim()
+  };
+  const latest = scene.history[0];
+  if (latest && latest.imagePrompt === state.imagePrompt && latest.videoPrompt === state.videoPrompt && (latest.styleSuffix || "") === state.styleSuffix) return false;
+  scene.history.unshift({timestamp: new Date().toISOString(), retained: false, ...state});
+  if (scene.history.length > 50) scene.history.pop();
+  return true;
+}
+
+function flashCopied(btn) {
+  if (!btn) return;
+  const orig = btn.innerHTML;
+  btn.innerHTML = "✅ Copied!";
+  setTimeout(() => btn.innerHTML = orig, 1200);
+}
+
+function copyPrompt(type, btn) {
+  const proj = projects.find(p => p.id === currentProjectId);
+  const scene = proj.scenes.find(s => s.id === currentSceneId);
+  if (!scene) return;
+  pushHistory(scene);
+  saveData();
+  renderHistory(scene);
+
+  const {img, vid} = buildPrompts();
+  const text = type === 'image' ? img : type === 'video' ? vid : `IMAGE PROMPT:\n${img}\n\nVIDEO PROMPT:\n${vid}`;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => flashCopied(btn))
+    .catch(() => alert("❌ Copy blocked by the browser - select the preview text and copy manually"));
+}
+
+function closeMenu() {
+  $("#overlay").classList.remove("active");
+  $("#sidebar").classList.remove("active");
+}
+
+/* ====================== TEMPLATES ====================== */
+function saveAsTemplate() {
+  const name = prompt("Template name?", "My Awesome Template");
+  if (!name) return;
+  const proj = projects.find(p => p.id === currentProjectId);
+  const scene = proj.scenes.find(s => s.id === currentSceneId);
+  globalTemplates.push({id: uuid(), name: name.trim(), imagePrompt: scene.imagePrompt, videoPrompt: scene.videoPrompt, styleSuffix: scene.styleSuffix});
+  saveData();
+  alert("✅ Saved as GLOBAL template!");
+}
+
+function showTemplatesPage() {
+  closeMenu();
+  saveCurrentScene();
+  showPage("#templatesPage");
+  renderTemplatesList();
+}
+
+function hideTemplatesPage() { showEditor(); }
+
+
+function renderTemplatesList() {
+  $("#templatesList").innerHTML = globalTemplates.map(t => `
+    <div class="template-item" onclick="applyTemplate('${t.id}')">
+      <div>
+        <strong>${esc(t.name)}</strong>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:4px;">${esc(trunc(t.imagePrompt, 60))}</div>
+      </div>
+      <button onclick="event.stopImmediatePropagation();deleteTemplate('${t.id}');" style="background:var(--danger);color:#fff;padding:6px 12px;border:none;border-radius:20px;font-size:13px;">🗑</button>
+    </div>
+  `).join('') || '<p style="color:var(--text-dim);text-align:center;">No global templates yet – save one from any scene!</p>';
+}
+
+window.deleteTemplate = id => {
+  const tpl = globalTemplates.find(t => t.id === id);
+  if (!tpl || !confirm(`Delete template "${tpl.name}"?`)) return;
+  globalTemplates = globalTemplates.filter(t => t.id !== id);
+  saveData();
+  renderTemplatesList();
+};
+
+window.applyTemplate = id => {
+  const template = globalTemplates.find(t => t.id === id);
+  const proj = projects.find(p => p.id === currentProjectId);
+  const scene = proj.scenes.find(s => s.id === currentSceneId);
+  if (!template || !scene) return;
+  pushHistory(scene);           // don't lose what is currently in the editor
+  scene.imagePrompt = template.imagePrompt;
+  scene.videoPrompt = template.videoPrompt;
+  scene.styleSuffix = template.styleSuffix;
+  hideTemplatesPage();
+  loadCurrentScene();
+  alert("✅ Global template applied!");
+};
+
+/* ====================== VARIABLES GROUPS ====================== */
+
+function showVariablesPage() {
+  closeMenu();
+  saveCurrentScene();
+  showPage("#variablesPage");
+  renderVariablesPage();
+}
+
+function hideVariablesPage() { showEditor(); }
+
+const activeVarGroup = () => {
+  const proj = projects.find(p => p.id === currentProjectId);
+  return ensureVariableGroups(proj)[proj.activeGroupIndex];
+};
+
+function renderVariablesPage() {
+  const proj = projects.find(p => p.id === currentProjectId);
+  const groups = ensureVariableGroups(proj);
+  $("#groupTabs").innerHTML = groups.map((g, i) => `
+    <div onclick="switchVariableGroup(${i});" class="group-tab ${i===proj.activeGroupIndex?'active':''}">${esc(g.name)}</div>
+  `).join('');
+
+  /* Rows addressed by index: keys may contain quotes that must never reach an inline handler */
+  $("#variablesList").innerHTML = Object.entries(getActiveVariables(proj)).map(([key,value], i) => `
+    <div class="var-row">
+      <input value="${esc(key)}" onchange="updateVariableKey(${i}, this.value)">
+      <textarea onchange="updateVariableValue(${i}, this.value)">${esc(value)}</textarea>
+      <button onclick="deleteVariable(${i})" style="background:var(--danger);color:#fff;border:none;border-radius:6px;padding:0 12px;">🗑</button>
+    </div>`).join('') || '<p style="color:var(--text-dim);text-align:center;">No variables yet - add one below</p>';
+}
+
+function switchVariableGroup(index) {
+  const proj = projects.find(p => p.id === currentProjectId);
+  proj.activeGroupIndex = index;
+  saveData();
+  renderVariablesPage();
+  updatePreview();
+}
+
+function addVariableGroup() {
+  const proj = projects.find(p => p.id === currentProjectId);
+  const newGroup = {name: `Group ${ensureVariableGroups(proj).length + 1}`, variables: {}};
+  Object.keys(getActiveVariables(proj)).forEach(k => newGroup.variables[k] = "");
+  proj.variableGroups.push(newGroup);
+  proj.activeGroupIndex = proj.variableGroups.length - 1;
+  saveData();
+  renderVariablesPage();
+}
+
+function addNewVariable() {
+  const key = ((prompt("Variable name (letters, numbers, underscore)?", "character")) || "").trim();
+  if (!key) return;                       // Cancel or empty -> nothing to do
+  if (!NAME_RE.test(key)) { alert("Names may only contain letters, numbers and underscore so that ${name} resolves"); return; }
+  const group = activeVarGroup();
+  if (group.variables[key] !== undefined) { alert('"' + key + '" already exists in this group'); return; }
+  group.variables[key] = "";
+  saveData();
+  renderVariablesPage();
+}
+
+/* Renames the key in every group so existing ${...} placeholders keep resolving */
+function updateVariableKey(index, newKey) {
+  const proj = projects.find(p => p.id === currentProjectId);
+  const oldKey = Object.keys(activeVarGroup().variables)[index];
+  newKey = (newKey || "").trim();
+  const invalid = !NAME_RE.test(newKey);
+  const clash = !invalid && newKey !== oldKey && activeVarGroup().variables[newKey] !== undefined;
+  if (invalid) alert("Names may only contain letters, numbers and underscore");
+  else if (clash) alert('"' + newKey + '" already exists in this group');
+  if (invalid || clash) { renderVariablesPage(); return; }   // put the old name back
+  if (newKey !== oldKey) {
+    ensureVariableGroups(proj).forEach(g => {
+      if (!(oldKey in g.variables)) return;
+      g.variables = Object.entries(g.variables).reduce((acc, ent) => Object.assign(acc, {[ent[0] === oldKey ? newKey : ent[0]]: ent[1]}), {});
+    });
+    saveData();
+  }
+  renderVariablesPage();
+  updatePreview();
+}
+
+function updateVariableValue(index, value) {
+  const group = activeVarGroup();
+  const key = Object.keys(group.variables)[index];
+  if (key === undefined) return;
+  group.variables[key] = String(value).trim();
+  saveData();
+  updatePreview();
+}
+
+function deleteVariable(index) {
+  const key = Object.keys(activeVarGroup().variables)[index];
+  if (key === undefined) return;
+  if (!confirm('Delete "' + key + '" from ALL groups?')) return;
+  ensureVariableGroups(projects.find(p => p.id === currentProjectId)).forEach(g => delete g.variables[key]);
+  saveData();
+  renderVariablesPage();
+  updatePreview();
+}
+
+/* ====================== EXPORT / IMPORT ====================== */
+window.exportAllData = () => downloadJson({projects, globalTemplates, currentProjectId, currentSceneId}, "aurora-full-backup.json");
+
+window.exportCurrentProject = () => {
+  const proj = projects.find(p => p.id === currentProjectId);
+  downloadJson(proj, `project-${String(proj.name).replace(/[^a-z0-9]/gi, "_")}.json`);
+};
+
+function downloadJson(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+const isProject = d => !!d && Array.isArray(d.scenes);
+
+/* Opens the hidden file picker and hands the parsed JSON to `then`. Input is reset so the same file can be picked twice */
+function pickJsonFile(then) {
+  const input = $("#fileImportInput");
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try { then(JSON.parse(ev.target.result)); }
+      catch (err) { alert("❌ Invalid JSON file."); console.error(err); }
+      input.value = "";
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+/* Runs after every successful import: migrate, repair the current pointers and repaint everything */
+function refreshAfterImport() {
+  migrateOldVariables();
+  if (!projects.length) createDefaultProject();
+  if (!projects.find(p => p.id === currentProjectId)) currentProjectId = projects[0].id;
+  const proj = projects.find(p => p.id === currentProjectId);
+  if (!proj.scenes.find(s => s.id === currentSceneId)) currentSceneId = proj.scenes[0]?.id || null;
+  saveData();
+  renderCurrentProjectName();
+  renderScenes();
+  loadCurrentScene();
+  if ($("#projectsPage").classList.contains("active")) renderProjectsList();
+}
+
+window.importProjectFromFile = () => pickJsonFile(imported => {
+  if (!isProject(imported)) { alert("❌ This is not a valid Aurora project file."); return; }
+  imported.id = uuid();
+  if (!imported.name) imported.name = "Imported Project";
+  imported.name += " _" + smartNow();
+  projects.push(imported);
+  refreshAfterImport();
+  alert(`✅ Project "${imported.name}" imported successfully!`);
+});
+
+window.showFileImport = () => {
+  const addMode = confirm("Import mode?\n\nOK = Add projects to existing data\nCancel = Replace ALL data (double confirmation next)");
+  pickJsonFile(imported => {
+    if (imported.projects) {
+      if (!addMode) {
+        if (!confirm("⚠️ REPLACE ALL DATA?") || !confirm("LAST CHANCE - really wipe everything?")) return;
+        projects = imported.projects || [];
+        globalTemplates = imported.globalTemplates || [];
+        currentProjectId = projects[0]?.id || null;
+        currentSceneId = projects[0]?.scenes?.[0]?.id || null;
+      } else {
+        projects = [...projects, ...(imported.projects || [])];
+        globalTemplates = [...globalTemplates, ...(imported.globalTemplates || [])];
+      }
+    } else if (isProject(imported)) {
+      imported.id = uuid();
+      projects.push(imported);
+    } else {
+      alert("❌ Neither a backup file nor a project file.");
+      return;
+    }
+    refreshAfterImport();
+    alert("✅ Import successful!");
+  });
+};
+
+/* Bulk style */
+window.applyStyleToAll = () => {
+  if (!confirm("Apply current style suffix to EVERY scene?")) return;
+  const proj = projects.find(p => p.id === currentProjectId);
+  const newSuffix = $("#styleSuffix").value.trim();
+  proj.scenes.forEach(s => s.styleSuffix = newSuffix);
+  saveData();
+  alert("✅ Style applied to all scenes!");
+};
+
+function triggerAutosave() {
+  clearTimeout(autoSaveTimeout);
+  autoSaveTimeout = setTimeout(() => { saveCurrentScene(); }, 1800);
+}
+
+/* ====================== INIT ====================== */
+function init() {
+  loadData();
+  if (localStorage.getItem("theme") === "light") document.documentElement.dataset.theme = "light";
+  renderCurrentProjectName();
+  renderScenes();
+  loadCurrentScene();
+
+  $("#imagePrompt").addEventListener("input", () => { updatePreview(); autoResizeTextareas(); triggerAutosave(); });
+  $("#videoPrompt").addEventListener("input", () => { updatePreview(); autoResizeTextareas(); triggerAutosave(); });
+  $("#styleSuffix").addEventListener("input", () => { updatePreview(); triggerAutosave(); });
+
+  $("#newSceneBtn").addEventListener("click", () => {
+    saveCurrentScene();
+    const proj = projects.find(p => p.id === currentProjectId);
+    const newS = createScene(proj.scenes.length);
+    proj.scenes.push(newS);
+    currentSceneId = newS.id;
+    saveData();
+    renderScenes();
+    loadCurrentScene();
+  });
+
+  $("#scenesStrip").addEventListener("click", e => {
+    const card = e.target.closest(".scene-card");
+    if (card) {
+      saveCurrentScene();
+      currentSceneId = card.dataset.id;
+      saveData();
+      renderScenes();
+      loadCurrentScene();
+    }
+  });
+
+  $("#menuBtn").addEventListener("click", () => {$("#overlay").classList.add("active");$("#sidebar").classList.add("active");});
+  $("#overlay").addEventListener("click", () => {$("#overlay").classList.remove("active");$("#sidebar").classList.remove("active");});
+
+  $("#toggleTheme").addEventListener("click", () => {
+    const isLight = document.documentElement.dataset.theme === "light";
+    document.documentElement.dataset.theme = isLight ? "" : "light";
+    localStorage.setItem("theme", isLight ? "" : "light");
+  });
+
+  $("#exportAll").addEventListener("click", () => {
+    const text = JSON.stringify({projects, globalTemplates, currentProjectId, currentSceneId}, null, 2);
+    navigator.clipboard.writeText(text).then(() => alert("✅ Exported to clipboard!"))
+      .catch(() => { console.warn("Clipboard blocked. Backup:\n" + text); alert("❌ Clipboard blocked by the browser - check the console for the JSON"); });
+  });
+  $("#importAll").addEventListener("click", () => {
+    const j = prompt("Paste exported JSON:");
+    if (j) try {
+      const d = JSON.parse(j);
+      projects = d.projects || [];
+      globalTemplates = d.globalTemplates || [];
+      currentProjectId = d.currentProjectId;
+      currentSceneId = d.currentSceneId;
+      refreshAfterImport();
+      alert("✅ Imported!");
+    } catch(e) { alert("Invalid JSON"); }
+  });
+  $("#clearAllData").addEventListener("click", () => {
+    if(confirm("DELETE EVERYTHING?") && confirm("LAST CHANCE")) { localStorage.clear(); location.reload(); }
+  });
+
+  /* iOS Safari can kill a backgrounded tab at any time - never rely on the autosave timer alone */
+  ["pagehide", "visibilitychange", "beforeunload"].forEach(ev => window.addEventListener(ev, () => {
+    if (ev !== "visibilitychange" || document.visibilityState === "hidden") saveCurrentScene();
+  }));
+
+  console.log("%c🚀 Aurora Lab v3.5 fully loaded — variables groups + file export/import ready!", "color:#58a6ff;font-weight:600");
+}
+
+init();
+</script>
+</body>
+</html>
