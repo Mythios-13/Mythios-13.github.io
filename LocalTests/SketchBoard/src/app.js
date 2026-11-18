@@ -35,7 +35,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 /**
  * @param {Element} root
  * @param {object} [deps] injectable environment, so the shell is testable headless:
- *   { storage, hash, download, ImageCtor, CanvasCtor, debounceMs }
+ *   { storage, hash, download, ImageCtor, createCanvas, CanvasCtor, debounceMs }
  * Defaults resolve lazily against window/document, so boot(root) keeps working under
  * Node exactly as it did before T7 (all pre-existing suites depend on it).
  */
@@ -135,7 +135,7 @@ export function boot(root, deps = {}) {
       const bbox = exportBounds(store.elements);
       const scale = Math.max(1, viewport.scale);
       const { width, height } = pngPixelSize(bbox, scale);
-      if (typeof env.ImageCtor !== 'function' || typeof env.CanvasCtor !== 'function') {
+      if (typeof env.ImageCtor !== 'function' || typeof env.createCanvas !== 'function') {
         toast('PNG export needs a browser canvas (no Image/canvas available)');
         return;
       }
@@ -152,9 +152,21 @@ export function boot(root, deps = {}) {
       const img = new env.ImageCtor();
       img.onload = () => {
         try {
-          const canvas = new env.CanvasCtor();
-          canvas.width = width; canvas.height = height;
+          // T8/BLOCKING-1: never `new window.HTMLCanvasElement()` — that is an illegal
+          // constructor in every real browser. The factory owns the resolution order.
+          const canvas = env.createCanvas();
+          if (!canvas || typeof canvas.getContext !== 'function') {
+            throw new Error('canvas unavailable');
+          }
+          canvas.width = width; canvas.height = height;   // set dims BEFORE touching ctx
           const ctx = canvas.getContext('2d');
+          if (!ctx || typeof ctx.drawImage !== 'function') {
+            throw new Error('2d context unavailable');
+          }
+          // T8/BLOCKING-2: PNG has no alpha page behind it — an unfilled canvas reads as
+          // black in most viewers. Opaque white first, artwork second.
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
           if (typeof canvas.toBlob === 'function') {
             canvas.toBlob((blob) => {
@@ -503,10 +515,31 @@ function resolveEnv(deps) {
     storage: 'storage' in deps ? deps.storage : defaultStorage,
     hash: 'hash' in deps ? deps.hash : (hasWindow && window.location ? window.location.hash : ''),
     ImageCtor: 'ImageCtor' in deps ? deps.ImageCtor : (hasWindow ? window.Image : undefined),
-    CanvasCtor: 'CanvasCtor' in deps ? deps.CanvasCtor : (hasWindow ? window.HTMLCanvasElement : undefined),
+    // Legacy escape hatch kept alive for existing callers/tests (T8 P3).
+    CanvasCtor: 'CanvasCtor' in deps ? deps.CanvasCtor : undefined,
+    createCanvas: resolveCanvasFactory(deps),
     debounceMs: 'debounceMs' in deps ? deps.debounceMs : DEFAULT_DEBOUNCE_MS,
     download: typeof deps.download === 'function' ? deps.download : browserDownload,
   };
+}
+
+/**
+ * How we obtain a canvas element. Resolution order (T8/BLOCKING-1):
+ *   1. deps.createCanvas  — explicit factory, the contract tests use
+ *   2. deps.CanvasCtor    — legacy constructor, back-compat for injected fakes
+ *   3. document.createElement('canvas') — THE ONLY legal way in a real browser
+ * `window.HTMLCanvasElement` is deliberately NOT a candidate: constructing it throws.
+ */
+function resolveCanvasFactory(deps) {
+  if (typeof deps.createCanvas === 'function') return deps.createCanvas;
+  if (typeof deps.CanvasCtor === 'function') {
+    const Ctor = deps.CanvasCtor;
+    return () => new Ctor();
+  }
+  if (typeof document !== 'undefined' && document && typeof document.createElement === 'function') {
+    return () => document.createElement('canvas');
+  }
+  return null;
 }
 
 /** Default download sink: anchor + object URL. Guarded so it can never break the app. */

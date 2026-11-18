@@ -1,10 +1,21 @@
 
 import subprocess, os, sys, json
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-PROJECT = os.path.join(ROOT, 'project')
-NODE = os.path.abspath(os.path.join(ROOT, '.unsloth-packages', 'lib',
-        'python3.13', 'site-packages', 'nodejs', 'bin', 'node'))
+# This file lives at project/tools/mutation_test.py. Resolve everything from
+# its real location instead of hardcoding layout assumptions -- the original
+# version assumed ROOT == project/ and ROOT/.unsloth-packages, which broke as
+# soon as the script was moved into tools/ (it looked for project/tools/project).
+TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT = os.path.dirname(TOOLS_DIR)                 # -> project/
+SANDBOX = os.path.dirname(PROJECT)                   # -> sandbox/
+NODE = os.environ.get('SKETCH_NODE') or os.path.abspath(os.path.join(
+        SANDBOX, '.unsloth-packages', 'lib', 'python3.13', 'site-packages',
+        'nodejs', 'bin', 'node'))
+
+if not os.path.exists(NODE):
+    print(f"!! node binary not found at: {NODE}")
+    print("   set SKETCH_NODE=/path/to/node and retry")
+    sys.exit(2)
 
 MUTATIONS = [
     # id, file, needle, replacement, why-it-must-be-caught
@@ -44,6 +55,24 @@ MUTATIONS = [
      "    dirty = true;\n    unschedule();",
      "    dirty = true;",
      "each edit must push the timer back (trailing debounce), else it fires mid-burst"),
+
+    # ---- T8 (PNG export) mutants, added with the fix, not after it -----------
+    ("M11-png-no-white-bg", "src/app.js",
+     "          ctx.fillStyle = '#ffffff';\n          ctx.fillRect(0, 0, width, height);",
+     "          // MUTANT: background fill removed",
+     "unfilled canvas => PNG reads as black; P1 pins fillRect-before-drawImage"),
+    ("M12-png-illegal-ctor", "src/app.js",
+     "  if (typeof document !== 'undefined' && document && typeof document.createElement === 'function') {\n    return () => document.createElement('canvas');\n  }",
+     "  if (typeof window !== 'undefined' && window.HTMLCanvasElement) {\n    return () => new window.HTMLCanvasElement();\n  }",
+     "the original bug: constructing HTMLCanvasElement throws in a real browser"),
+    ("M13-png-bg-after-image", "src/app.js",
+     "          ctx.fillStyle = '#ffffff';\n          ctx.fillRect(0, 0, width, height);\n          ctx.drawImage(img, 0, 0, width, height);",
+     "          ctx.drawImage(img, 0, 0, width, height);\n          ctx.fillStyle = '#ffffff';\n          ctx.fillRect(0, 0, width, height);",
+     "order matters: white painted last would erase the artwork"),
+    ("M14-png-swallows-failure", "src/app.js",
+     "        (e) => toast('PNG export failed: ' + (e && e.message))",
+     "        () => toast('PNG exported')",
+     "a failed raster must never claim success (P2: no silent success)"),
 ]
 
 def run_suite():
