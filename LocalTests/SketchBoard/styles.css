@@ -1,0 +1,33 @@
+* { box-sizing: border-box; margin: 0; }
+html, body, #app { height: 100%; overflow: hidden; font-family: Inter, system-ui, sans-serif; }
+#app { position: relative; background: #f6f8fb; user-select: none; }
+svg.board { position: absolute; inset: 0; display: block; touch-action: none; }
+.toolbar { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 4px; background: #fff; padding: 6px; border-radius: 12px; box-shadow: 0 4px 18px rgba(15,23,42,.12); z-index: 5; }
+.tool-btn { width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; font-size: 17px; cursor: pointer; }
+.tool-btn:hover { background: #eef2f7; }
+.tool-btn.active { background: #2563eb; color: #fff; }
+.topbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; background: #fff; padding: 8px 12px; border-radius: 12px; box-shadow: 0 4px 18px rgba(15,23,42,.12); z-index: 5; }
+.style-input { height: 28px; border: 1px solid #dbe2ea; border-radius: 6px; background: #fff; font-size: 12px; }
+input[type=color].style-input { width: 34px; padding: 2px; }
+input[type=range].style-input { width: 80px; }
+.hud { position: absolute; bottom: 12px; left: 12px; background: rgba(255,255,255,.9); padding: 6px 10px; border-radius: 8px; font-size: 12px; color: #475569; box-shadow: 0 2px 10px rgba(15,23,42,.08); z-index: 5; }
+.props-panel { position: fixed; width: 244px; background: #fff; border-radius: 12px; box-shadow: 0 10px 34px rgba(15,23,42,.22); padding: 12px; z-index: 20; }
+.prop-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; color: #0f172a; }
+.prop-row { display: flex; justify-content: space-between; align-items: center; margin: 6px 0; }
+.prop-label { font-size: 12px; color: #475569; }
+.prop-input { width: 90px; height: 26px; border: 1px solid #dbe2ea; border-radius: 6px; padding: 0 6px; }
+.prop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.prop-btn { padding: 6px; border: 1px solid #dbe2ea; border-radius: 8px; background: #f8fafc; font-size: 12px; cursor: pointer; }
+.prop-btn:hover { background: #eef2f7; }
+.prop-btn.danger { color: #dc2626; border-color: #fecaca; }
+.preview, .marquee { pointer-events: none; }
+.sel-box, .sel-handle { pointer-events: none; }
+.text-editor { position: absolute; z-index: 30; border: 2px solid #2563eb; border-radius: 4px; padding: 2px 4px; background: rgba(255,255,255,.95); outline: none; resize: both; line-height: 1.25; }
+
+/* ---- T7 burger menu (top-right, auto-open) ---- */
+.burger { position: fixed; top: 12px; right: 12px; width: 38px; height: 38px; border: 0; border-radius: 10px; background: #fff; box-shadow: 0 4px 18px rgba(15,23,42,.16); font-size: 17px; line-height: 1; cursor: pointer; z-index: 40; }
+.burger:hover { background: #eef2f7; }
+.menu { position: fixed; top: 58px; right: 12px; display: flex; flex-direction: column; gap: 4px; width: 180px; background: #fff; border-radius: 12px; box-shadow: 0 10px 34px rgba(15,23,42,.22); padding: 8px; z-index: 39; }
+.menu:not(.open) { display: none; }
+.menu-item { text-align: left; padding: 8px 10px; border: 1px solid #dbe2ea; border-radius: 8px; background: #f8fafc; font-size: 13px; cursor: pointer; }
+.menu-item:hover { background: #eef2f7; border-color: #cbd5e1; }
