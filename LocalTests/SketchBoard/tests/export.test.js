@@ -26,13 +26,21 @@ test('X1 unionBBox is the geometric union over mixed types', async () => {
   const b = unionBBox(els);
   assert.equal(b.x, -20);
   assert.equal(b.y, -60);
-  // ORACLE derived from geometry.js itself, not hand-computed: text() stores a BASELINE
-  // y, so its box runs from y - 0.85h to y + 0.15h. (LEAD ruling TB-7: an earlier
-  // version of this test hardcoded 330 by treating y as the top edge.)
+  // ORACLE derived from the geometry TEXT METRICS CONTRACT (T10-B rewrote it): text()
+  // stores the FIRST BASELINE y; lines stack DOWNWARD (render.js tspans), so the box
+  // runs y - TEXT_ASCENT_RATIO*fs .. y + TEXT_DESCENT_RATIO*fs for ONE line.
+  // (Old pin said baseline + 0.15h / 304.5 - that encoded the pre-T10-B fiction that
+  // all lines sat above y. Re-derived from the contract constants, not from output.)
   const ts = textSize(text(500, 300, 'hello'));
+  const { TEXT_ASCENT_RATIO, TEXT_DESCENT_RATIO, bboxOfElement } = await import('../src/geometry.js');
+  // The UNION top is the arrow's -60 (asserted above); the text-specific top belongs to
+  // the element's OWN bbox - checked there, not against the union (first draft of this
+  // pin wrongly compared b.y to the text top).
+  const tb = bboxOfElement(text(500, 300, 'hello'));
+  assert.equal(tb.y, 300 - TEXT_ASCENT_RATIO * 24, 'text top = first baseline minus cap height');
   assert.equal(b.x + b.w, 500 + ts.w, 'right edge = text right edge');
-  assert.equal(b.y + b.h, 300 + ts.h * 0.15, 'bottom edge = baseline + 0.15h');
-  assert.equal(b.y + b.h, 304.5);   // pinned literal: catches a silent baseline change
+  assert.equal(b.y + b.h, 300 + TEXT_DESCENT_RATIO * 24, 'bottom edge = last baseline + descender room');
+  assert.equal(b.y + b.h, 310.8);   // pinned literal: catches a silent baseline change
 });
 
 test('X1b unionBBox returns null for empty / non-array input (never NaN box)', async () => {

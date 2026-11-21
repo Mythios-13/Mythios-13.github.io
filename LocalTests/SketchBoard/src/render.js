@@ -1,6 +1,6 @@
 // render.js — PURE module: element -> SVG markup strings. XML-safe output.
 
-import { bboxOfElement, outlineOfShape, arrowHeadPolygon, pointsToSmoothPath, normalizeRect } from './geometry.js';
+import { bboxOfElement, outlineOfShape, arrowHeadPolygon, pointsToSmoothPath, normalizeRect, cornerPoints, TEXT_LINE_HEIGHT_RATIO } from './geometry.js';
 import { DASH_PATTERNS } from './styles.js';
 
 /** Escape every char that can break out of an attribute/text context. */
@@ -84,8 +84,10 @@ export function elementToSvg(el) {
       const anchor = st.textAlign === 'center' ? 'middle' : st.textAlign === 'right' ? 'end' : 'start';
       const lines = String(el.text ?? '').split('\n');
       // NB-2 (review): empty lines get one space — SVG collapses empty tspans to zero height.
+      // Baselines stack DOWNWARD from el.y (the FIRST BASELINE). Line spacing comes from
+      // the geometry TEXT METRICS CONTRACT so hit-testing can never drift from painting.
       const tspans = lines.map((ln, i) =>
-        `<tspan x="${num(el.x)}" dy="${i === 0 ? 0 : fs * 1.25}">${escapeXml(ln) || ' '}</tspan>`).join('');
+        `<tspan x="${num(el.x)}" dy="${i === 0 ? 0 : fs * TEXT_LINE_HEIGHT_RATIO}">${escapeXml(ln) || ' '}</tspan>`).join('');
       return `<text ${id} x="${num(el.x)}" y="${num(el.y)}" font-size="${fs}" font-family="${escapeXml(st.fontFamily || 'sans-serif')}" font-style="${escapeXml(st.fontStyle || 'normal')}" font-weight="${escapeXml(String(st.fontWeight || '400'))}" text-anchor="${anchor}" fill="${escapeXml(st.fillEnabled !== false ? (st.fill || '#111') : 'none')}" opacity="${num(st.opacity ?? 1)}">${tspans}</text>`;
     }
     default:
@@ -98,7 +100,12 @@ export function sceneToSvg(elements) {
   return elements.map(elementToSvg).join('\n');
 }
 
-/** Selection overlay markup: dashed bbox outlines + corner handles. */
+/**
+ * Selection overlay markup: dashed bbox outlines + corner handles.
+ * F1 / reviewer MAJOR-5: each handle carries data-id + data-corner so the overlay is
+ * addressable (hit-testing, CSS cursors, debugging). Corner order is fixed nw,ne,sw,se and
+ * comes from geometry.cornerPoints so renderer and hit-tester can never disagree.
+ */
 export function selectionOverlaySvg(elements, scale) {
   const pad = 4 / (scale || 1);
   const hs = 6 / (scale || 1);
@@ -106,8 +113,10 @@ export function selectionOverlaySvg(elements, scale) {
   for (const el of elements) {
     const b = bboxOfElement(el);
     out.push(`<rect class="sel-box" data-sel="${escapeXml(el.id)}" x="${num(b.x - pad)}" y="${num(b.y - pad)}" width="${num(b.w + 2 * pad)}" height="${num(b.h + 2 * pad)}" fill="none" stroke="#2563eb" stroke-width="${num(1.5 / (scale || 1))}" stroke-dasharray="${num(4 / (scale || 1))} ${num(3 / (scale || 1))}"/>`);
-    for (const [cx, cy] of [[b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]]) {
-      out.push(`<rect class="sel-handle" x="${num(cx - hs / 2)}" y="${num(cy - hs / 2)}" width="${num(hs)}" height="${num(hs)}" fill="#fff" stroke="#2563eb" stroke-width="${num(1 / (scale || 1))}"/>`);
+    const cs = cornerPoints(b);
+    for (const corner of ['nw', 'ne', 'sw', 'se']) {
+      const { x: cx, y: cy } = cs[corner];
+      out.push(`<rect class="sel-handle" data-id="${escapeXml(el.id)}" data-corner="${corner}" x="${num(cx - hs / 2)}" y="${num(cy - hs / 2)}" width="${num(hs)}" height="${num(hs)}" fill="#fff" stroke="#2563eb" stroke-width="${num(1 / (scale || 1))}"/>`);
     }
   }
   return out.join('\n');

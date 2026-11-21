@@ -49,6 +49,7 @@ class FakeImage {
   set src(v) {
     this._src = v;
     if (FakeImage.mode === 'error') { if (this.onerror) setTimeout(() => this.onerror(new Error('decode')), 0); return; }
+    if (FakeImage.mode === 'hang') { return; }   // neither onload nor onerror ever fires
     if (this.onload) setTimeout(() => this.onload(), 0);
   }
 }
@@ -180,4 +181,82 @@ test('P6 no vacuous assertions in the PNG suite (anti-M7b meta-guard)', () => {
   assert.ok(!code.includes(vacuous), vacuous + ') is banned: it cannot fail');
   const n = (src.match(/assert\.(equal|deepEqual|match|ok\()/g) || []).length;
   assert.ok(n >= 20, 'the PNG suite must make substantial assertions, found ' + n);
+});
+
+// ------------------------------------------------------------------- P7 (H-A)
+// Reviewer round 2 on T8 found this. In real browsers toBlob invokes its callback
+// with NULL when encoding fails. Downloading null while toasting "PNG exported"
+// is the same silent-success lie as BLOCKING-3, just one layer deeper.
+test('P7 toBlob(null) (browser encoding failure) must NOT claim a successful export', async () => {
+  FakeImage.mode = 'ok'; FakeImage.instances.length = 0;
+  const { downloads, hud, itemByAction, settle } = await bootApp({
+    createCanvas() {
+      return { tagName: 'CANVAS', width: 0, height: 0,
+               getContext: () => ({ fillStyle: null, fillRect() {}, drawImage() {} }),
+               toBlob(cb) { setTimeout(() => cb(null), 0); } };   // Chrome's failure mode
+    },
+  });
+  itemByAction('export-png').dispatch('click');
+  await settle(); await settle();
+  const msg = (hud() && hud().textContent) || '';
+  assert.equal(downloads.length, 0,
+    'a null blob must never reach the download sink (got ' + downloads.length + '; hud=' + msg + ')');
+  assert.match(msg, /png/i, 'toast must mention PNG: ' + msg);
+  assert.match(msg, /fail|could not|unable|error/i, 'toast must report failure, got: ' + msg);
+});
+
+// ------------------------------------------------------------------- P8 (H-B)
+// If Image.onload/onerror never fire, the promise hangs and the user sees NOTHING:
+// no file, no spinner, no error. That is indistinguishable from "the button is broken".
+test('P8 a rasterisation that never settles surfaces a timeout toast', async () => {
+  FakeImage.mode = 'hang'; FakeImage.instances.length = 0;
+  const { downloads, hud, itemByAction } = await bootApp({ pngRasterTimeoutMs: 20 });
+  itemByAction('export-png').dispatch('click');
+  await new Promise((r) => setTimeout(r, 150));
+  const msg = (hud() && hud().textContent) || '';
+  assert.equal(downloads.length, 0, 'nothing may be downloaded when rasterisation stalls');
+  assert.match(msg, /png/i, 'user must be told something about PNG, hud was: ' + JSON.stringify(msg));
+  assert.match(msg, /timed out|timeout|took too long|stall/i,
+    'a stalled raster must produce an explicit timeout message, got: ' + JSON.stringify(msg));
+  FakeImage.mode = 'ok';
+});
+
+// ------------------------------------------------------------------- P9 (H-A)
+// The mirror of P7 on the fallback path: no toBlob AND a throwing toDataURL must not
+// silently resolve into a bogus download.
+test('P9 no-toBlob canvas with a throwing toDataURL reports failure instead of a fake file', async () => {
+  FakeImage.mode = 'ok'; FakeImage.instances.length = 0;
+  const { downloads, hud, itemByAction, settle } = await bootApp({
+    createCanvas() {
+      return { tagName: 'CANVAS', width: 0, height: 0,
+               getContext: () => ({ fillStyle: null, fillRect() {}, drawImage() {} }),
+               toDataURL() { throw new Error('tainted canvas'); } };
+    },
+  });
+  itemByAction('export-png').dispatch('click');
+  await settle(); await settle();
+  assert.equal(downloads.length, 0, 'a tainted/failed canvas must not download anything');
+  const msg = (hud() && hud().textContent) || '';
+  assert.match(msg, /fail|could not|unable|error/i, 'must report failure, got: ' + msg);
+});
+
+// ------------------------------------------------------------------ P10 (M17)
+// Mutation M17 SURVIVED first: nothing exercised toDataURL() returning '' (as opposed
+// to throwing, which P9 covers). An empty string reaching the download sink produces a
+// 0-byte / unopenable "PNG" while the app claims success. This test kills that mutant.
+test('P10 no-toBlob canvas whose toDataURL returns "" must fail loudly, not export junk', async () => {
+  FakeImage.mode = 'ok'; FakeImage.instances.length = 0;
+  const { downloads, hud, itemByAction, settle } = await bootApp({
+    createCanvas() {
+      return { tagName: 'CANVAS', width: 0, height: 0,
+               getContext: () => ({ fillStyle: null, fillRect() {}, drawImage() {} }),
+               toDataURL: () => '' };                    // degenerate, but does not throw
+    },
+  });
+  itemByAction('export-png').dispatch('click');
+  await settle(); await settle();
+  const msg = (hud() && hud().textContent) || '';
+  assert.equal(downloads.length, 0,
+    'an empty data URL must never be handed to the sink (got ' + downloads.length + '; hud=' + msg + ')');
+  assert.match(msg, /fail|could not|unable|error/i, 'must report failure, got: ' + msg);
 });

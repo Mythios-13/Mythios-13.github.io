@@ -65,7 +65,7 @@ test('M3 #reset is EPHEMERAL: does not destroy storage before the user mutates',
 });
 
 // ------------------------------------------------------------------------ M4
-test('M4 burger menu exists top-right, auto-OPEN, exactly four actions, toggle works', async () => {
+test('M4 burger menu exists top-right, auto-OPEN, exactly the requested actions, toggle works', async () => {
   const { root, items, menu, burger } = await bootApp();
   const m = menu();
   assert.ok(m, '.menu container exists');
@@ -73,9 +73,11 @@ test('M4 burger menu exists top-right, auto-OPEN, exactly four actions, toggle w
   assert.ok(b, '.burger toggle button exists');
   assert.ok(m.classList.contains('open'), 'menu is OPEN by default on boot (stakeholder: auto open)');
   const actions = items().map((x) => x.dataset.action).sort();
-  assert.deepEqual(actions, ['clear', 'export-png', 'export-svg', 'go-center'], 'exactly the four requested actions');
+  // F6 added save-disk/open-disk (client: save+load to disk). Pin updated to the new
+  // SIX-action contract but kept EXACT (deepEqual) so an accidental 7th entry still fails.
+  assert.deepEqual(actions, ['clear', 'export-png', 'export-svg', 'go-center', 'open-disk', 'save-disk'], 'exactly the requested actions (T7 four + F6 two)');
   const labels = items().map((x) => x.textContent).join('|');
-  for (const want of ['PNG', 'SVG', 'center', 'Clear']) {
+  for (const want of ['PNG', 'SVG', 'center', 'Clear', 'Save to disk', 'Open from disk']) {
     assert.ok(new RegExp(want, 'i').test(labels), 'label mentions ' + want + ', got: ' + labels);
   }
   // Toggle collapses and expands again.

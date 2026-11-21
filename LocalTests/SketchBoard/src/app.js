@@ -9,7 +9,7 @@ import { ToolManager, TOOLS, ZOOM_FACTOR } from './tools.js';
 import { sceneToSvg, selectionOverlaySvg, gridMarkup, elementToSvg } from './render.js';
 import { STYLE_PRESETS, DEFAULT_STYLE, FONT_FAMILIES } from './styles.js';
 import { buildSvgDocument, buildDownloadName, pngPixelSize, exportBounds } from './export.js';
-import { STORAGE_KEY, loadSavedDoc, isResetRequested, createAutosave, DEFAULT_DEBOUNCE_MS } from './persistence.js';
+import { STORAGE_KEY, loadSavedDoc, inspectSavedDoc, inspectDocString, isProtectedStatus, isResetRequested, createAutosave, DEFAULT_DEBOUNCE_MS } from './persistence.js';
 
 export const SHORTCUT_TOOLS = { v: 'select', h: 'hand', r: 'rect', o: 'ellipse', l: 'line', a: 'arrow', p: 'path', t: 'text' };
 export const TRIANGLE_SHORTCUT = 'y';
@@ -31,6 +31,9 @@ export function isTypingTarget(el) {
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+// Upper bound on waiting for the raster Image to settle (T8/H-B). Generous enough for
+// slow machines, short enough that the user is never left staring at nothing.
+const PNG_RASTER_TIMEOUT_MS = 10000;
 
 /**
  * @param {Element} root
@@ -82,6 +85,20 @@ export function boot(root, deps = {}) {
   topbar.append(fillOn, fillIn, strokeOn, strokeIn, widthIn, opacityIn, dashSel, radiusIn, fontSel, fsIn, presetSel);
 
   const hud = el('div', 'hud');
+  // F7: double-click the status bar -> zoom to exactly 100%, anchored at the window
+  // centre (the world point you are looking at stays put). Assigning scale = 1 outright
+  // instead of zoomAt(c, c, 1/scale) avoids float dust when scale is already ~1.
+  hud.title = 'Double-click to reset zoom to 100%';
+  hud.addEventListener('dblclick', () => {
+    if (viewport.scale === 1) { toast('Already at 100% zoom'); return; }   // idempotent, no churn
+    const W = root.clientWidth || 1280, H = root.clientHeight || 800;
+    const centreWorldBefore = viewport.screenToWorld({ x: W / 2, y: H / 2 });
+    viewport.scale = 1;
+    viewport.x = W / 2 - centreWorldBefore.x;      // re-anchor: centre point stays centred
+    viewport.y = H / 2 - centreWorldBefore.y;
+    render();                                      // refresh overlay + status line first...
+    toast('Zoom reset to 100%');                   // ...THEN toast: render() rewrites hud text
+  });
   const panel = el('div', 'props-panel'); panel.hidden = true;
   root.append(svg, toolbar, topbar, hud, panel);
 
@@ -92,6 +109,8 @@ export function boot(root, deps = {}) {
   burger.title = 'Menu';
   const menu = el('div', 'menu open');            // stakeholder: "auto open"
   const MENU_ACTIONS = [
+    ['save-disk', 'Save to disk'],      // F6: writes the localStorage envelope to a .json
+    ['open-disk', 'Open from disk'],    // F6: reads one back, validated before applying
     ['export-png', 'Save as PNG'],
     ['export-svg', 'Save as SVG'],
     ['go-center', 'Go to center'],
@@ -106,7 +125,13 @@ export function boot(root, deps = {}) {
   burger.addEventListener('click', () => menu.classList.toggle('open', !menu.classList.contains('open')));
   root.append(burger, menu);
 
-  function toast(msg) { hud.textContent = msg; }
+  // MAJOR-4: while a payload we cannot represent sits under our key, the board is
+  // READ-ONLY and the HUD carries a PINNED explanation. Pinning matters: render()
+  // rewrites the HUD every frame, an unpinned toast would be clobbered instantly.
+  let readOnly = false;
+  let pinnedMsg = null;
+  function toast(msg) { if (!pinnedMsg) hud.textContent = msg; }
+  function pinMessage(msg) { pinnedMsg = msg; hud.textContent = msg; }
 
   function runMenuAction(action) {
     switch (action) {
@@ -114,6 +139,8 @@ export function boot(root, deps = {}) {
       case 'export-png': return doExportPng();
       case 'go-center': return doGoCenter();
       case 'clear': return doClearCanvas();
+      case 'save-disk': return doSaveDisk();
+      case 'open-disk': return doOpenDisk();
       default: return undefined;
     }
   }
@@ -149,6 +176,23 @@ export function boot(root, deps = {}) {
   /** Glue only: SVG -> data URL -> Image -> canvas -> blob -> download. Never throws sync. */
   function rasterizePng({ svgBody, width, height }) {
     return new Promise((resolve, reject) => {
+      // T8/H-B: if the Image never fires onload OR onerror (malformed SVG data URLs do
+      // this in Firefox/Safari), a bare promise hangs forever and the user sees NO
+      // feedback at all -- indistinguishable from a dead button. So we race a watchdog.
+      let settled = false;
+      let watchdog = null;
+      const done = (fn) => (arg) => {
+        if (settled) return;
+        settled = true;
+        if (watchdog !== null) clearTimeout(watchdog);
+        fn(arg);
+      };
+      const resolveOnce = done(resolve);
+      const rejectOnce = done(reject);
+      const timeoutMs = Number.isFinite(env.pngRasterTimeoutMs) && env.pngRasterTimeoutMs > 0
+        ? env.pngRasterTimeoutMs : PNG_RASTER_TIMEOUT_MS;
+      watchdog = setTimeout(() => rejectOnce(new Error('timed out rasterizing the image')), timeoutMs);
+
       const img = new env.ImageCtor();
       img.onload = () => {
         try {
@@ -170,18 +214,26 @@ export function boot(root, deps = {}) {
           ctx.drawImage(img, 0, 0, width, height);
           if (typeof canvas.toBlob === 'function') {
             canvas.toBlob((blob) => {
+              // T8/H-A: browsers call this callback with NULL when encoding fails.
+              // Downloading null while toasting "PNG exported" is a silent-success lie.
+              if (!blob) { rejectOnce(new Error('canvas produced no image data')); return; }
               try {
                 env.download(buildDownloadName({ base: docTitle(), format: 'png' }), blob, 'image/png');
-                resolve(blob);
-              } catch (e) { reject(e); }
+                resolveOnce(blob);
+              } catch (e) { rejectOnce(e); }
             }, 'image/png');
           } else {
-            env.download(buildDownloadName({ base: docTitle(), format: 'png' }), canvas.toDataURL(), 'image/png');
-            resolve(null);
+            const url = canvas.toDataURL();                       // may throw (tainted canvas)
+            if (typeof url !== 'string' || !url) {
+              rejectOnce(new Error('canvas produced no image data'));
+              return;
+            }
+            env.download(buildDownloadName({ base: docTitle(), format: 'png' }), url, 'image/png');
+            resolveOnce(null);
           }
-        } catch (e) { reject(e); }
+        } catch (e) { rejectOnce(e); }
       };
-      img.onerror = () => reject(new Error('could not rasterize the SVG'));
+      img.onerror = () => rejectOnce(new Error('could not rasterize the SVG'));
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgBody);
     });
   }
@@ -205,6 +257,67 @@ export function boot(root, deps = {}) {
     toast('Canvas cleared (Ctrl+Z to undo)');
   }
 
+  // ---------- F6: save / load the DOCUMENT to/from disk ----------
+  // The file format IS the localStorage envelope (client decision): store.toJSON()
+  // bytes, validated on the way in by inspectDocString - the SAME brain that guards
+  // the storage door (MAJOR-4). One contract, two doors.
+  function doSaveDisk() {
+    try {
+      const text = JSON.stringify(store.toJSON());                       // single source of truth
+      const name = buildDownloadName({ base: docTitle(), format: 'json' });
+      Promise.resolve(env.saveFile(name, text, 'application/json;charset=utf-8'))
+        .then(() => toast(`Saved ${name} (${store.elements.length} objects)`))
+        .catch((e) => toast(`Save failed: ${e && e.message ? e.message : e}`));   // never reject at click site (F6-8)
+    } catch (e) {
+      toast(`Save failed: ${e && e.message ? e.message : e}`);
+    }
+  }
+
+  async function doOpenDisk() {
+    let picked = null;
+    try {
+      picked = await env.openFile();                                     // null = user cancelled (F6-6)
+    } catch (e) {
+      toast(`Could not open file: ${e && e.message ? e.message : e}`);
+      return;
+    }
+    if (!picked || typeof picked.text !== 'string') return;              // cancel: silent no-op
+    const verdict = inspectDocString(picked.text);                       // validate BEFORE touching anything
+    if (verdict.status !== 'ok') {
+      toast(`Cannot open ${picked.name || 'file'}: ${diskRefusalReason(verdict)}`);
+      return;                                                            // board/storage untouched (F6-4)
+    }
+    const prevSnapshot = store.snapshot();                               // capture BEFORE mutating...
+    try {
+      store.fromJSON(JSON.parse(picked.text));                           // ...fromJSON clears history itself,
+      store.pushState(prevSnapshot);                                     // so the undo point is pushed AFTER (D-F6-2)
+    } catch (e) {
+      toast(`Cannot open ${picked.name || 'file'}: damaged despite validation (${e && e.message ? e.message : e})`);
+      return;
+    }
+    if (readOnly) {                                                      // D-F6-1: a good file heals the lock
+      readOnly = false;
+      pinnedMsg = null;
+    }
+    closeTextEditor();
+    closePanel();
+    render();
+    toast(`Opened ${picked.name || 'file'} (${store.elements.length} objects)`);
+  }
+
+  /** Why a FILE was refused, in user words. Same family as readOnlyReason (MAJOR-4). */
+  function diskRefusalReason(verdict) {
+    switch (verdict.status) {
+      case 'malformed': return 'not valid SketchBoard JSON';
+      case 'foreign': return `belongs to another app (${verdict.reason})`;
+      case 'newer-version': return `saved by a newer version (${verdict.reason})`;
+      case 'bad-version': return `invalid version (${verdict.reason})`;
+      case 'older-version': return `uses an old schema (${verdict.reason}) this build cannot migrate yet`;
+      case 'bad-element': return `contains unknown element type "${verdict.reason}"`;
+      default: return 'cannot be understood';
+    }
+  }
+
   // ---------- rendering ----------
   let preview = null; // transient drag preview descriptor
   function render() {
@@ -220,7 +333,7 @@ export function boot(root, deps = {}) {
     gOverlay.setAttribute('transform', cameraTransform);
     gScene.innerHTML = sceneToSvg(store.elements);                   // SAFE: render.js escapes all user data
     gOverlay.innerHTML = selectionOverlaySvg(store.selectedElements(), viewport.scale) + previewMarkup();
-    hud.textContent = `${store.elements.length} objects · zoom ${(viewport.scale * 100).toFixed(0)}% · ${tools.tool}`;
+    hud.textContent = pinnedMsg || `${store.elements.length} objects · zoom ${(viewport.scale * 100).toFixed(0)}% · ${tools.tool}`;
     syncToolbar();
     if (editingId) positionTextEditor();                             // T5-A6: editor tracks camera
   }
@@ -461,6 +574,7 @@ export function boot(root, deps = {}) {
     storage: env.storage,
     key: STORAGE_KEY,
     debounceMs: env.debounceMs,
+    canWrite: () => !readOnly,   // MAJOR-4: never rewrite a save this build cannot read back
     setTimeout: (fn, ms) => (typeof setTimeout === 'function' ? setTimeout(fn, ms) : fn()),
     clearTimeout: (t) => { if (typeof clearTimeout === 'function') clearTimeout(t); },
   });
@@ -475,24 +589,61 @@ export function boot(root, deps = {}) {
   // temporal-dead-zone crash at boot.
   const api = { store, viewport, tools, render, setTool, startTextEditor, wheelFactor,
     autosave, flushAutosave: () => autosave.flush(), runMenuAction,
+    get readOnly() { return readOnly; },
     exportSvgString: () => buildSvgDocument(store.elements) };
 
   // ---------- boot state: #reset > saved doc > welcome seed (R5) ----------
+  // MAJOR-4: ONE verdict drives everything. Only 'none' (nothing stored) may ever be
+  // seeded over. Every other non-ok status LOCKS the board read-only instead of
+  // falling through to seed(): the old fall-through let autosave bury the user's
+  // real document (e.g. written by a newer build) under demo shapes. Silent data loss.
+  // NOTE: the verdict is computed EVEN UNDER #reset — an ephemeral empty canvas is
+  // fine, but letting the user draw on top of a payload we cannot read back would
+  // reintroduce the exact clobber this ticket exists to prevent.
+  const verdict = inspectSavedDoc(env.storage, STORAGE_KEY);
+  if (isProtectedStatus(verdict.status)) {
+    readOnly = true;
+    pinMessage(readOnlyReason(verdict));
+  }
   if (isResetRequested(env.hash)) {
     // EPHEMERAL by design: empty canvas for THIS load only. Storage is deliberately
     // NOT wiped, so a user who previews #reset and reloads gets their work back.
     toast('Empty canvas (#reset) \u2014 your saved board is untouched');
-  } else {
+  } else if (verdict.status === 'none') {
+    seed(api);                                    // first run only
+  } else if (verdict.status === 'ok') {
     const saved = loadSavedDoc(env.storage, STORAGE_KEY);
-    if (saved && saved.elements.length >= 0 && Array.isArray(saved.elements)) {
+    if (saved) {
       try { store.fromJSON(saved); }
-      catch (e) { seed(api); toast('Saved board unreadable \u2014 started fresh'); }
-    } else {
-      seed(api);                                    // first run only
+      catch (e) {
+        // inspect said loadable yet load failed -> trust neither; protect the bytes.
+        readOnly = true;
+        pinMessage('Saved board could not be opened \u2014 left untouched (read-only) to protect your work');
+      }
     }
   }
   render();
   return api;
+}
+
+/** Human sentence per refusal class (MAJOR-4). Names the WHY; users deserve it. */
+function readOnlyReason(verdict) {
+  switch (verdict.status) {
+    case 'newer-version':
+      return 'This board was saved by a NEWER version of SketchBoard \u2014 it stays read-only so your work is safe.';
+    case 'foreign':
+      return 'Saved data belongs to another app \u2014 left untouched (read-only).';
+    case 'malformed':
+      return 'Saved data is damaged and cannot be understood \u2014 left untouched (read-only).';
+    case 'bad-version':
+      return 'Saved data has an invalid version \u2014 left untouched (read-only).';
+    case 'bad-element':
+      return `Saved data contains an unknown element (${verdict.reason}) \u2014 left untouched (read-only).`;
+    case 'older-version':
+      return 'Saved data uses an old schema this build cannot migrate yet \u2014 left untouched (read-only).';
+    default:
+      return 'Saved data cannot be opened \u2014 left untouched (read-only).';
+  }
 }
 
 function seed(api) {
@@ -519,8 +670,68 @@ function resolveEnv(deps) {
     CanvasCtor: 'CanvasCtor' in deps ? deps.CanvasCtor : undefined,
     createCanvas: resolveCanvasFactory(deps),
     debounceMs: 'debounceMs' in deps ? deps.debounceMs : DEFAULT_DEBOUNCE_MS,
+    pngRasterTimeoutMs: 'pngRasterTimeoutMs' in deps ? deps.pngRasterTimeoutMs : PNG_RASTER_TIMEOUT_MS,
     download: typeof deps.download === 'function' ? deps.download : browserDownload,
+    // F6 seams: same injectability rule as download/createCanvas — tests inject fakes,
+    // production resolves lazily against browser APIs.
+    saveFile: typeof deps.saveFile === 'function' ? deps.saveFile : browserSaveFile,
+    openFile: typeof deps.openFile === 'function' ? deps.openFile : browserOpenFile,
   };
+}
+
+/** F6 default sink: Blob + <a download>. Mirrors browserDownload but kept separate —
+ *  download() takes a mime/body contract for exports; saveFile is the document door. */
+function browserSaveFile(name, text, mime) {
+  if (typeof document === 'undefined') throw new Error('no DOM available to save');
+  const blob = typeof Blob !== 'undefined' ? new Blob([text], { type: mime }) : null;
+  const a = document.createElement('a');
+  a.href = blob ? URL.createObjectURL(blob)
+                : 'data:' + mime + ';charset=utf-8,' + encodeURIComponent(text);
+  a.download = name;
+  document.body && document.body.appendChild(a);
+  a.click();
+  a.remove();
+  if (blob && typeof URL.revokeObjectURL === 'function') setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+/** F6 default picker: File System Access API when present, else hidden <input type=file>.
+ *  Resolves {name, text} or null on cancel. Never throws synchronously. */
+function browserOpenFile() {
+  if (typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function') {
+    return window.showOpenFilePicker({
+      types: [{ description: 'SketchBoard document', accept: { 'application/json': ['.json'] } }],
+    }).then(async (handles) => {
+      const [handle] = handles;
+      const file = await handle.getFile();
+      return { name: file.name, text: await file.text() };
+    }, () => null);                                                     // AbortError -> cancel -> null
+  }
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') { reject(new Error('no DOM available to pick a file')); return; }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.style.display = 'none';
+    let settled = false;
+    input.addEventListener('cancel', () => { if (!settled) { settled = true; input.remove(); resolve(null); } });
+    input.addEventListener('change', () => {
+      if (settled) return;
+      settled = true;
+      const file = input.files && input.files[0];
+      input.remove();
+      if (!file) { resolve(null); return; }
+      const done = (text) => resolve({ name: file.name, text });
+      if (typeof file.text === 'function') { file.text().then(done, (e) => reject(e)); }
+      else if (typeof FileReader !== 'undefined') {
+        const fr = new FileReader();
+        fr.onload = () => done(String(fr.result));
+        fr.onerror = () => reject(fr.error || new Error('read failed'));
+        fr.readAsText(file);
+      } else reject(new Error('no file reader available'));
+    });
+    document.body && document.body.appendChild(input);
+    input.click();
+  });
 }
 
 /**

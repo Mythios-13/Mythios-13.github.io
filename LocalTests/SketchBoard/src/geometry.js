@@ -56,12 +56,28 @@ export function pointInPolygon(pts, p) {
   return inside;
 }
 
+/**
+ * TEXT METRICS CONTRACT — single source of truth for how text is laid out.
+ * render.js draws tspan i at baseline y = el.y + i*fs*TEXT_LINE_HEIGHT_RATIO
+ * (lines stack DOWNWARD from el.y, the FIRST BASELINE). Anything that needs the
+ * painted extent of text (hit-testing, selection overlay, resize anchoring) MUST
+ * derive from these constants — T10 round 1 shipped a hit box floating above the
+ * glyphs because this relationship lived in three heads (render, geometry, tools)
+ * instead of one. See tests/text_editable_multiline.test.js.
+ */
+export const TEXT_LINE_HEIGHT_RATIO = 1.25;   // baseline-to-baseline / fontSize
+export const TEXT_ASCENT_RATIO = 0.8;          // cap height above the FIRST baseline
+export const TEXT_DESCENT_RATIO = 0.45;        // room below the LAST baseline (>= descender)
+
 /** Approximate text metrics (no DOM here — deterministic estimate). */
 export function textSize(el) {
   const fs = (el.style && el.style.fontSize) || 24;
   const lines = String(el.text ?? '').split('\n');
   const longest = lines.reduce((m, l) => Math.max(m, l.length), 1);
-  return { w: longest * fs * 0.6, h: Math.max(1, lines.length) * fs * 1.25 };
+  // Height convention: n line boxes of lineHeight each. Combined with the corrected
+  // bbox.y (first baseline - ascent) below, the band spans cap-of-line-1 .. last
+  // baseline + TEXT_DESCENT_RATIO*fs, covering every painted glyph.
+  return { w: longest * fs * 0.6, h: Math.max(1, lines.length) * fs * TEXT_LINE_HEIGHT_RATIO };
 }
 
 /** Axis-aligned bbox in world coords for any element type. */
@@ -86,11 +102,95 @@ export function bboxOfElement(el) {
     }
     case 'text': {
       const s = textSize(el);
-      return { x: el.x, y: el.y - s.h * 0.85, w: s.w, h: s.h };
+      const fs = (el.style && el.style.fontSize) || 24;
+      // TOP = first baseline minus cap height. NOT el.y - 0.85*h: that floated the whole
+      // box above the text for multi-line elements (T10-B: lines 2..N unhittable).
+      return { x: el.x, y: el.y - TEXT_ASCENT_RATIO * fs, w: s.w, h: s.h };
     }
     default:
       return normalizeRect({ x: el.x, y: el.y, w: el.w ?? 0, h: el.h ?? 0 });
   }
+}
+
+/**
+ * F1 — the single pure primitive behind every handle resize.
+ * Drag `corner` to `point`; the OPPOSITE corner is the immovable anchor.
+ *
+ * Guarantees (docs/specs/F1-resize-handles.md §3.3):
+ *   - never mutates its inputs
+ *   - never returns negative or non-finite w/h (past-anchor drags CLAMP, they do not flip — D1)
+ *   - with `aspectRatio` (w/h) the result is the SMALLEST box with that exact ratio that still
+ *     CONTAINS the requested box, anchored on the fixed corner
+ *
+ * @param {{x:number,y:number,w:number,h:number}} rect   box at gesture start
+ * @param {'nw'|'ne'|'sw'|'se'} corner                    handle being dragged
+ * @param {{x:number,y:number}} point                     current pointer, world coords
+ * @param {{minSize?:number, aspectRatio?:number|null}} [opts]
+ * @returns {{x:number,y:number,w:number,h:number}}
+ */
+export const RESIZE_CORNERS = ['nw', 'ne', 'sw', 'se'];
+
+export function resizeRect(rect, corner, point, opts = {}) {
+  if (!RESIZE_CORNERS.includes(corner)) throw new Error(`resizeRect: unknown corner "${corner}"`);
+  const minSize = Number.isFinite(opts.minSize) ? Math.max(0, opts.minSize) : 0;
+  const ratio = Number.isFinite(opts.aspectRatio) && opts.aspectRatio > 0 ? opts.aspectRatio : null;
+
+  // Sanitise inputs: garbage in must degrade to a valid box, never NaN into the model.
+  const rx = Number.isFinite(rect && rect.x) ? rect.x : 0;
+  const ry = Number.isFinite(rect && rect.y) ? rect.y : 0;
+  const rw = Number.isFinite(rect && rect.w) ? Math.abs(rect.w) : 0;
+  const rh = Number.isFinite(rect && rect.h) ? Math.abs(rect.h) : 0;
+  const px = Number.isFinite(point && point.x) ? point.x : rx + rw;
+  const py = Number.isFinite(point && point.y) ? point.y : ry + rh;
+
+  // Anchor = the corner we are NOT dragging. Computed from the ORIGINAL box so it is
+  // bit-exact regardless of how far or how often the pointer moves.
+  const ax = corner.includes('w') ? rx + rw : rx;
+  const ay = corner.includes('n') ? ry + rh : ry;
+
+  // SIGNED extents: dragging a west/north corner grows the box towards negative coordinates.
+  // Deliberately NOT Math.abs() — abs would let a past-anchor drag grow the box in the wrong
+  // direction (a silent flip, rejected by D1). Negative here means "pointer crossed the anchor"
+  // and is flattened to minSize by the clamp below.
+  const wantW = corner.includes('w') ? ax - px : px - ax;
+  const wantH = corner.includes('n') ? ay - py : py - ay;
+  let w = clamp(wantW, minSize, Infinity);
+  let h = clamp(wantH, minSize, Infinity);
+
+  if (ratio) {
+    // Contain-and-scale: honour the long axis, grow the short one to match the ratio.
+    const s = Math.max(w / ratio, h);           // s == final height
+    h = s;
+    w = s * ratio;
+    if (w < minSize || h < minSize) {            // compose with the floor without losing the ratio
+      h = Math.max(h, minSize, minSize / ratio);
+      w = h * ratio;
+    }
+  }
+
+  // Rebuild from the anchor so the fixed corner cannot drift by a rounding step.
+  // Dragging a WEST corner means the anchor is the EAST edge, so the box starts at ax - w.
+  return {
+    x: corner.includes('w') ? ax - w : ax,
+    y: corner.includes('n') ? ay - h : ay,
+    w,
+    h,
+  };
+}
+
+/** Corner coordinates of a box, keyed by handle name. Shared by render + hit-testing. */
+export function cornerPoints(r) {
+  return {
+    nw: { x: r.x, y: r.y },
+    ne: { x: r.x + r.w, y: r.y },
+    sw: { x: r.x, y: r.y + r.h },
+    se: { x: r.x + r.w, y: r.y + r.h },
+  };
+}
+
+/** Opposite corner name — the anchor for a given dragged handle. */
+export function oppositeCorner(corner) {
+  return { nw: 'se', ne: 'sw', sw: 'ne', se: 'nw' }[corner];
 }
 
 /** Regular n-gon inscribed in the bbox ellipse (used for triangle/diamond). */
@@ -191,8 +291,19 @@ export function hitTestElement(el, p, tol = 6) {
       }
       return false;
     }
-    case 'text':
-      return rectContainsPoint(bbox, p);
+    case 'text': {
+      // T10 (client S4: "can't edit text via double click"): every other type gets the
+      // padded rect; text used the BARE estimate, so presses on/near glyph edges missed
+      // pick() -> dblclick found nothing -> silent no-op. textSize() is an ESTIMATE
+      // (len*fs*0.6); real advance widths deviate in BOTH directions by font family,
+      // weight and case — hence a FONT-PROPORTIONAL margin (metric error scales with
+      // fontSize), floored by the shared type tolerance t (already zoom-compensated).
+      // Trade-off accepted: a wider hit band can out-compete a shape underneath for a
+      // click; pick() resolves that by z-order (topmost wins), same as any overlap.
+      const fs = (st.fontSize ?? 24);
+      const tPad = Math.max(t, fs * 0.3, bbox.h * 0.15);
+      return rectContainsPoint({ x: bbox.x - tPad, y: bbox.y - tPad, w: bbox.w + 2 * tPad, h: bbox.h + 2 * tPad }, p);
+    }
     case 'ellipse': {
       // NB-2 (review): rim band uses min-radius normalization; uneven for eccentric ellipses (v1 ok).
       const cx = bbox.x + bbox.w / 2, cy = bbox.y + bbox.h / 2;

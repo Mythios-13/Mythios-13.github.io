@@ -80,7 +80,14 @@ test('selection overlay keeps constant SCREEN size across zoom levels', () => {
   const el = { type: 'rect', id: 'z', x: 0, y: 0, w: 100, h: 50 };
   const near = selectionOverlaySvg([el], 1);
   const far = selectionOverlaySvg([el], 0.1); // zoomed out 10x
-  const wNear = parseFloat(/class="sel-handle"[^>]*width="([\d.]+)"/.exec(near)[1]);
-  const wFar = parseFloat(/class="sel-handle"[^>]*width="([\d.]+)"/.exec(far)[1]);
+  // REVIEWER FIX (S4): the old greedy [^>]* stepped PAST the real width= attribute and
+  // captured stroke-width instead — the test asserted the wrong field and survived only
+  // because stroke-width also scales as 1/scale. Lazy quantifier + \b pins REAL width.
+  const attrW = (markup) => parseFloat(/class="sel-handle"[^>]*?\bwidth="([\d.]+)"/.exec(markup)[1]);
+  const attrSW = (markup) => parseFloat(/class="sel-handle"[^>]*?\bstroke-width="([\d.]+)"/.exec(markup)[1]);
+  const wNear = attrW(near), wFar = attrW(far);
+  assert.ok(wNear !== attrSW(near), 'guard: width capture must not be stroke-width again');
+  assert.equal(wNear, 6, 'handle is 6 css px at scale 1');
+  assert.equal(wFar, 60, 'handle grows in world units as we zoom out');
   assert.ok(wFar > wNear * 5, 'handles grow in world units as we zoom out => constant on screen');
 });

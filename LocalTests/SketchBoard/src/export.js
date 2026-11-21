@@ -105,8 +105,9 @@ export function sanitizeFilename(name) {
 /** Only two formats exist. Anything else is a programming error - say so loudly. */
 export function buildDownloadName({ base = DEFAULT_FILENAME, format = 'svg' } = {}) {
   const fmt = String(format).toLowerCase();
-  if (fmt !== 'svg' && fmt !== 'png') {
-    throw new Error(`buildDownloadName: unsupported export format "${format}" (expected svg or png)`);
+  // F6 adds 'json': the save-to-disk file IS the localStorage envelope.
+  if (fmt !== 'svg' && fmt !== 'png' && fmt !== 'json') {
+    throw new Error(`buildDownloadName: unsupported export format "${format}" (expected svg, png or json)`);
   }
   return `${sanitizeFilename(base)}.${fmt}`;
 }
