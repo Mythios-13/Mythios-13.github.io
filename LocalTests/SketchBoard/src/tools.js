@@ -7,7 +7,7 @@ import { hitTestElement, bboxOfElement, normalizeRect, resizeRect, cornerPoints,
 /** REVIEWER BLOCKING-1: Node 18.4 lacks structuredClone; elements are plain JSON data. */
 export function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
 
-export const TOOLS = ['select', 'hand', 'rect', 'ellipse', 'triangle', 'diamond', 'star', 'line', 'arrow', 'path', 'text'];
+export const TOOLS = ['select', 'hand', 'rect', 'ellipse', 'triangle', 'diamond', 'star', 'line', 'arrow', 'path', 'text', 'image'];
 
 // Tunables (named constants — no magic numbers per review standards)
 export const CLICK_THRESHOLD_PX = 3;      // drags smaller than this count as clicks
@@ -19,7 +19,11 @@ export const HIT_TOL_SCREEN_PX = 6;
 export const HANDLE_HIT_SCREEN_PX = 7;    // grab radius around a handle centre (screen px) — CLIENT-SIGNED-OFF S4
 export const MIN_FONT_SIZE = 4;           // text resize floor (world units)
 export const MAX_FONT_SIZE = 1000;         // text resize ceiling — guards runaway drags
-const RESIZABLE_BOX_TYPES = ['rect', 'ellipse', 'triangle', 'diamond', 'star'];
+// F4: 'image' joins the BOX RESIZE path (corner handles are drawn for every selected
+// element by render.selectionOverlaySvg; this list gates which types _applyResize treats
+// as a resizable box). Images keep the OPPOSITE aspect polarity from shapes: locked by
+// default, Shift frees (spec F4 section 0).
+const RESIZABLE_BOX_TYPES = ['rect', 'ellipse', 'triangle', 'diamond', 'star', 'image'];
 const CORNER_CURSOR = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize' };
 const EPS_TOL = 1e-9;
 
@@ -37,13 +41,26 @@ export class ToolManager {
     this.spaceHeld = false;
     this.drag = null;           // active drag descriptor
     this.pendingText = null;    // world point where text tool wants a node
+    this.pendingImage = null;   // F4: armed by the picker ({src,width,height}); each canvas press stamps a copy
+    this.pointerScreen = { x: 0, y: 0 };   // S5-F4c: last seen pointer (screen px) so a PLACE
+                                            // ghost can follow the cursor even when no drag is live
   }
 
   setTool(t) {
     if (!TOOLS.includes(t)) throw new Error(`Unknown tool: ${t}`);
     this.tool = t;
     this.drag = null;
+    this.pendingImage = null;   // F4: switching tools always exits image PLACE mode
     return { type: 'tool', tool: t };
+  }
+
+  /** F4: called by the shell once the user has picked an image file. Arms PLACE mode.
+   *  Stays armed so the user can stamp several copies; setTool() disarms. */
+  armImage(img) {
+    if (!img || typeof img.src !== 'string' || !img.src.startsWith('data:image/')
+        || !(img.width > 0) || !(img.height > 0)) return false;
+    this.pendingImage = { src: img.src, width: img.width, height: img.height };
+    return true;
   }
 
   _size() { return this.env.getSize ? this.env.getSize() : { width: 1280, height: 800 }; }
@@ -94,6 +111,26 @@ export class ToolManager {
     if (ev.button !== 0) return { type: 'ignored' };
 
     if (this.tool === 'select') return this._downSelect(world, ev);
+    if (this.tool === 'image') {
+      // F4: PLACE mode. Press stamps a copy CENTRED under the cursor at 100%
+      // (natural pixel size == world units at scale 1). Not armed (cancelled picker)
+      // => total no-op: nothing created, no history entry (F4-4).
+      const p = this.pendingImage;
+      if (!p) return { type: 'none' };
+      this.store.pushState(this.store.snapshot());          // exactly ONE undo step per stamp
+      const el = this.store.createElement('image', {
+        x: world.x - p.width / 2, y: world.y - p.height / 2,
+        w: p.width, h: p.height, src: p.src,
+        natW: p.width, natH: p.height,   // S5-F4d: remembered so the menu can restore 100%
+      });
+      this.store.addElement(el);
+      this.store.select([el.id]);
+      // S5-F4e (client): one stamp ENDS the placement - the tool returns to 'select' and the
+      // new image is selected, so corner handles are immediately available. Multi-stamp is
+      // re-armed by clicking the image button again (which pops the picker).
+      this.setTool('select');
+      return { type: 'placed-image', id: el.id };
+    }
     if (this.tool === 'text') {
       this.drag = { kind: 'place-text', start: world, origin: { x: ev.x, y: ev.y } };
       return { type: 'pending-text', world };
@@ -149,7 +186,14 @@ export class ToolManager {
   }
 
   pointerMove(ev) {
+    this.pointerScreen = { x: ev.x, y: ev.y };   // S5-F4c: tracked for the image place-ghost
     if (!this.drag) {
+      // S5-F4c: image PLACE mode shows a live outline of the image under the cursor, so the
+      // user sees where it will land BEFORE pressing. Same data as the stamp uses => ghost
+      // and commit cannot disagree.
+      if (this.tool === 'image' && this.pendingImage) {
+        return { type: 'preview-image', world: this.viewport.screenToWorld({ x: ev.x, y: ev.y }), img: this.pendingImage };
+      }
       if (this.tool === 'select') {
         const w = this.viewport.screenToWorld({ x: ev.x, y: ev.y });
         const h = this.hitHandle(w);                       // F1: direct resize affordance
@@ -317,9 +361,12 @@ export class ToolManager {
     // A bare world-unit floor lets low zoom collapse a shape below one handle grab
     // radius (unrecoverable). Reviewer lead #3; pinned by RZ1 across scales.
     const minSize = MIN_SHAPE_SIZE_W / Math.max(this.viewport.scale, EPS_TOL);
-    // D2 REMOVED (client sign-off S4): box resize is always free deform; Shift has no
-    // effect here. The aspectRatio primitive stays in geometry.js for F4 (images).
-    const aspect = null;
+    // D2 REMOVED (client sign-off S4): SHAPE box resize is always free deform; Shift has
+    // no effect there. F4 deliberately INVERTS the polarity for images (spec section 0):
+    // aspect LOCKED by default from the pristine ratio, Shift RELEASES to free deform.
+    // Industry-standard asymmetry - photos must not distort; vector shapes may.
+    let aspect = null;
+    if (el.type === 'image' && !d.shift && orig.w > 0 && orig.h > 0) aspect = orig.w / orig.h;
 
     if (RESIZABLE_BOX_TYPES.includes(el.type)) {
       const r = resizeRect({ x: orig.x, y: orig.y, w: orig.w ?? 0, h: orig.h ?? 0 }, d.corner, point, { minSize, aspectRatio: aspect });

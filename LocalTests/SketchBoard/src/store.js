@@ -5,6 +5,7 @@ import { cloneStyle } from './styles.js';
 export const ELEMENT_TYPES = [
   'rect', 'ellipse', 'triangle', 'diamond', 'star',
   'line', 'arrow', 'path', 'text',
+  'image',                                  // F4: src is a data URL; w/h are world units
 ];
 
 const HISTORY_CAP = 100;

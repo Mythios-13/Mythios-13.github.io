@@ -8,6 +8,29 @@ svg.board { position: absolute; inset: 0; display: block; touch-action: none; }
 .tool-btn.active { background: #2563eb; color: #fff; }
 .topbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; background: #fff; padding: 8px 12px; border-radius: 12px; box-shadow: 0 4px 18px rgba(15,23,42,.12); z-index: 5; }
 .style-input { height: 28px; border: 1px solid #dbe2ea; border-radius: 6px; background: #fff; font-size: 12px; }
+/* S6: "Recent" and "Presets" galleries - each a labelled box holding miniature buttons. */
+.preset-box { display: flex; align-items: center; gap: 6px; padding-left: 10px; border-left: 1px solid #dbe2ea; }
+.preset-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+.swatch-strip { display: flex; align-items: center; gap: 4px; max-width: 320px; overflow-x: auto; }
+.swatch { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; border: 1px solid #dbe2ea; border-radius: 6px; background: #fff; cursor: pointer; }
+.swatch:hover { border-color: #2563eb; background: #f8fafc; }
+.swatch:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.swatch-svg { width: 24px; height: 16px; flex: none; background-image: linear-gradient(45deg, #eef2f7 25%, transparent 25%, transparent 75%, #eef2f7 75%), linear-gradient(45deg, #eef2f7 25%, transparent 25%, transparent 75%, #eef2f7 75%); background-size: 8px 8px; background-position: 0 0, 4px 4px; border-radius: 2px; }
+.swatch-name { font-size: 11px; color: #475569; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swatch-empty { font-size: 11px; color: #94a3b8; font-style: italic; }
+/* S6c: galleries live in one container. Wide screens: static inline content (toggle never
+   shown => still instantly available). Narrow screens (.topbar-compact): the container
+   becomes a dropdown that opens OVER the canvas instead of pushing controls off-screen. */
+.style-gallery { display: flex; align-items: center; gap: 8px; }
+.gallery-toggle { height: 28px; padding: 0 10px; border: 1px solid #dbe2ea; border-radius: 6px; background: #f8fafc; font-size: 12px; cursor: pointer; }
+.gallery-toggle:hover { background: #eef2f7; }
+.topbar-compact .style-gallery { position: absolute; top: calc(100% + 8px); left: 0; flex-direction: column; align-items: stretch; gap: 8px; background: #fff; padding: 10px 12px; border-radius: 12px; box-shadow: 0 10px 34px rgba(15,23,42,.22); display: none; z-index: 6; }
+.topbar-compact .style-gallery.open { display: flex; }
+.topbar-compact .preset-box { padding-left: 0; border-left: 0; }
+.topbar-compact .swatch-strip { max-width: min(70vw, 420px); }
+/* S6: the F2 "Apply style" button was REMOVED (the mirror fix made it a no-op); its
+   galleries above replaced it. No .apply-style rules remain on purpose - a stale rule
+   here would hide a resurrected button nobody asked for. */
 input[type=color].style-input { width: 34px; padding: 2px; }
 input[type=range].style-input { width: 80px; }
 /* F7: status bar is now interactive (double-click resets zoom) - cursor invites it. */

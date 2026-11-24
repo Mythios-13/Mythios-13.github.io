@@ -32,6 +32,7 @@ test('every innerHTML assignment is either "" or a render.js call (whitelist)', 
     /^gridMarkup\(.*\)$/,                 // generated coords only
     /^sceneToSvg\(.*\)$/,                  // render.js escapes everything
     /^selectionOverlaySvg\(.*\) \+ previewMarkup\(\)$/,
+    /^swatchMarkup\(.*\)$/,                // S6: render.js output on <svg>, same class as sceneToSvg
     /^''$/,                                // clear-before-rebuild
   ];
   for (const h of hits) {
@@ -147,7 +148,10 @@ test('AC checklist wiring: each required interaction is bound in app.js', () => 
 });
 
 test('styles.css defines classes referenced by app skeleton', () => {
-  for (const cls of ['board', 'toolbar', 'topbar', 'hud', 'props-panel', 'text-editor', 'prop-btn']) {
+  // S6: swatch gallery classes added to the pin; 'apply-style' REMOVED on purpose - the
+  // button it styled no longer exists and a stale rule would mask a resurrected one.
+  for (const cls of ['board', 'toolbar', 'topbar', 'hud', 'props-panel', 'text-editor', 'prop-btn',
+                     'preset-box', 'swatch-strip', 'swatch', 'swatch-svg', 'swatch-name']) {
     assert.ok(cssSrc.includes(`.${cls}`), `.css missing .${cls}`);
   }
 });

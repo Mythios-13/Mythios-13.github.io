@@ -6,15 +6,24 @@
 import { Store } from './store.js';
 import { Viewport } from './viewport.js';
 import { ToolManager, TOOLS, ZOOM_FACTOR } from './tools.js';
-import { sceneToSvg, selectionOverlaySvg, gridMarkup, elementToSvg } from './render.js';
-import { STYLE_PRESETS, DEFAULT_STYLE, FONT_FAMILIES } from './styles.js';
+import { sceneToSvg, selectionOverlaySvg, gridMarkup, elementToSvg, swatchMarkup, SWATCH_W, SWATCH_H } from './render.js';
+import { STYLE_PRESETS, DEFAULT_STYLE, FONT_FAMILIES, collectUsedStyles, collectPresetStyles, styleKeyOf, swatchPatchOf } from './styles.js';
 import { buildSvgDocument, buildDownloadName, pngPixelSize, exportBounds } from './export.js';
 import { STORAGE_KEY, loadSavedDoc, inspectSavedDoc, inspectDocString, isProtectedStatus, isResetRequested, createAutosave, DEFAULT_DEBOUNCE_MS } from './persistence.js';
 
 export const SHORTCUT_TOOLS = { v: 'select', h: 'hand', r: 'rect', o: 'ellipse', l: 'line', a: 'arrow', p: 'path', t: 'text' };
 export const TRIANGLE_SHORTCUT = 'y';
+export const IMAGE_SHORTCUT_HINT = 'i';   // lives in EXTRA_TOOL_SHORTCUTS below
 // NOTE (tester T4): 'd' is RESERVED for Ctrl+D duplicate — never a bare tool key.
-export const EXTRA_TOOL_SHORTCUTS = { j: 'diamond', k: 'star' };
+export const EXTRA_TOOL_SHORTCUTS = { j: 'diamond', k: 'star', i: 'image' };
+
+/** S6c (client): below this window width the style bar genuinely cannot fit its ten
+ *  controls AND two miniature galleries, so the galleries fold behind a dropdown toggle.
+ *  Exported so the BOUNDARY is testable instead of guessed - and the boundary belongs to
+ *  the INLINE side (>= threshold stays inline, preserving instant availability).
+ *  Chosen from the bar's own budget: ~10 controls (~500px) + two galleries (~600px) +
+ *  chrome, rounded down to a value where overflow is certain rather than possible. */
+export const COMPACT_MAX_WIDTH = 1000;
 
 /** Wheel -> zoom factor. ctrlKey = trackpad pinch. deltaMode 1 = lines. */
 export function wheelFactor(deltaY, deltaMode, ctrlKey) {
@@ -59,7 +68,7 @@ export function boot(root, deps = {}) {
   svg.append(gGrid, gScene, gOverlay);
 
   const toolbar = el('div', 'toolbar');
-  for (const [label, tool] of [['⬚','select'],['✋','hand'],['▭','rect'],['◯','ellipse'],['△','triangle'],['◇','diamond'],['★','star'],['╱','line'],['➔','arrow'],['✎','path'],['T','text']]) {
+  for (const [label, tool] of [['⬚','select'],['✋','hand'],['▭','rect'],['◯','ellipse'],['△','triangle'],['◇','diamond'],['★','star'],['╱','line'],['➔','arrow'],['✎','path'],['T','text'],['🖼','image']]) {
     const b = el('button', 'tool-btn'); b.textContent = label; b.dataset.tool = tool;
     b.title = tool; b.addEventListener('click', () => setTool(tool));
     toolbar.appendChild(b);
@@ -75,14 +84,58 @@ export function boot(root, deps = {}) {
   const opacityIn = mkInput('range', 'Opacity'); opacityIn.min = '0'; opacityIn.max = '1'; opacityIn.step = '0.05'; opacityIn.value = '1';
   const dashSel = document.createElement('select'); dashSel.className = 'style-input'; dashSel.title = 'Dash';
   for (const d of ['solid', 'dashed', 'dotted']) { const o = document.createElement('option'); o.value = d; o.textContent = d; dashSel.appendChild(o); }
+  dashSel.value = 'solid';   // explicit: real DOM auto-picks the first option, stubs do not —
+                             // init makes the toolbar definition identical in both worlds
   const radiusIn = mkInput('number', 'Corner radius (rect)'); radiusIn.min = '0'; radiusIn.max = '200'; radiusIn.value = '0';
   const fontSel = document.createElement('select'); fontSel.className = 'style-input'; fontSel.title = 'Font';
   for (const f of FONT_FAMILIES) { const o = document.createElement('option'); o.value = f; o.textContent = f.split(',')[0].replace(/"/g, ''); fontSel.appendChild(o); }
+  fontSel.value = FONT_FAMILIES[0];   // deterministic default (same reason as dashSel)
   const fsIn = mkInput('number', 'Font size'); fsIn.min = '6'; fsIn.max = '400'; fsIn.value = String(DEFAULT_STYLE.fontSize);
-  const presetSel = document.createElement('select'); presetSel.className = 'style-input'; presetSel.title = 'Style preset';
-  const noneOpt = document.createElement('option'); noneOpt.value = ''; noneOpt.textContent = 'presets…'; presetSel.appendChild(noneOpt);
-  for (const p of Object.keys(STYLE_PRESETS)) { const o = document.createElement('option'); o.value = p; o.textContent = p; presetSel.appendChild(o); }
-  topbar.append(fillOn, fillIn, strokeOn, strokeIn, widthIn, opacityIn, dashSel, radiusIn, fontSel, fsIn, presetSel);
+  // ---------------------------------------------------------------------------
+  // S6 (client, session 5): RECENT STYLES + PRESET GALLERIES replace both the old
+  // "Apply style" button (made meaningless by the mirror fix - selecting an object now
+  // restores its style into the bar, so "apply the bar" became a no-op) and the bare
+  // <select> preset chooser. Each entry is a MINIATURE of the style, painted by
+  // render.swatchMarkup (same renderer as real artwork -> same escaping, same colours).
+  //   * Recent  = every distinct style actually in use in the drawing, document order of
+  //               first use, rebuilt on every render() behind a signature cache.
+  //   * Presets = the built-in STYLE_PRESETS, rendered identically (client: "exactly the
+  //               same, with a miniature preview").
+  // Clicking either applies that style to the CURRENT SELECTION (no selection => inert,
+  // see D-S6-3). Two separate boxes, side by side, at the end of the bar.
+  // ---------------------------------------------------------------------------
+  function buildSwatchBox(cls, labelText) {
+    const box = el('div', 'preset-box ' + cls);
+    box.appendChild(el('span', 'preset-label', labelText));
+    const strip = el('div', 'swatch-strip');
+    box.appendChild(strip);
+    return { box, strip };
+  }
+  const recentBox = buildSwatchBox('recent-styles', 'Recent');
+  const presetGallery = buildSwatchBox('preset-styles', 'Presets');
+  // STYLE_PRESETS stays referenced here on purpose: app.test.js pins "presets reachable"
+  // from app.js, and this is the honest one-line proof that the gallery reads them.
+  void STYLE_PRESETS;
+  // S6c (client): on a narrow window the two galleries would push the ten live controls off
+  // screen, so they live inside ONE collapsible container with a toggle. Deliberate design:
+  //   * WIDE  -> container is plain static content, toggle hidden: zero extra clicks, the
+  //              "instantly available" behaviour the client asked to keep.
+  //   * NARROW-> toggle appears, container starts CLOSED and opens over the canvas.
+  // The swatches themselves are ALWAYS in the DOM and clickable either way - collapsing is
+  // a visual accommodation, never a behavioural one (pinned by S6c-4).
+  const galleryWrap = el('div', 'style-gallery');
+  galleryWrap.append(recentBox.box, presetGallery.box);
+  const galleryToggle = el('button', 'gallery-toggle', '\u25be styles');
+  galleryToggle.type = 'button';
+  galleryToggle.title = 'Show or hide style galleries';
+  galleryToggle.setAttribute('aria-expanded', 'false');
+  galleryToggle.hidden = true;                       // wide screens never see it
+  galleryToggle.addEventListener('click', () => {
+    const open = !galleryWrap.classList.contains('open');
+    galleryWrap.classList.toggle('open', open);
+    galleryToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  topbar.append(fillOn, fillIn, strokeOn, strokeIn, widthIn, opacityIn, dashSel, radiusIn, fontSel, fsIn, galleryToggle, galleryWrap);
 
   const hud = el('div', 'hud');
   // F7: double-click the status bar -> zoom to exactly 100%, anchored at the window
@@ -335,7 +388,10 @@ export function boot(root, deps = {}) {
     gOverlay.innerHTML = selectionOverlaySvg(store.selectedElements(), viewport.scale) + previewMarkup();
     hud.textContent = pinnedMsg || `${store.elements.length} objects · zoom ${(viewport.scale * 100).toFixed(0)}% · ${tools.tool}`;
     syncToolbar();
-    if (editingId) positionTextEditor();                             // T5-A6: editor tracks camera
+    syncStyleControls();                                      // S5-UI: bar mirrors the selection
+    syncSwatchGalleries();                                    // S6: recent + preset miniatures
+    syncResponsiveBar();                                      // S6c: fold galleries when narrow
+    if (editingId) positionTextEditor();                      // T5-A6: editor tracks camera
   }
   function previewMarkup() {
     if (!preview) return '';
@@ -364,6 +420,16 @@ export function boot(root, deps = {}) {
     }
     return '';
   }
+  /** S5-F4c: provisional image element for the PLACE ghost. Centring rule MUST match the
+   *  stamp in tools.pointerDown (world - natural/2); kept beside the other preview builders
+   *  so preview and commit stay siblings. */
+  function imagePreviewElement(p, world) {
+    if (!p) return null;
+    return store.createElement('image', {
+      x: world.x - p.width / 2, y: world.y - p.height / 2,
+      w: p.width, h: p.height, src: p.src,
+    });
+  }
   /** Build the provisional model element for a drag-create preview (T6). */
   function shapePreviewElement(shapeType, rect) {
     if (!rect) return null;
@@ -381,9 +447,187 @@ export function boot(root, deps = {}) {
   function syncToolbar() {
     for (const b of toolbar.querySelectorAll('.tool-btn')) b.classList.toggle('active', b.dataset.tool === tools.tool);
   }
-  function setTool(t) { tools.setTool(t); closePanel(); closeTextEditor(); render(); }
+  function setTool(t) {
+    tools.setTool(t); closePanel(); closeTextEditor(); render();
+    // F4: the image tool pops the file picker IMMEDIATELY (client brief: "popup to load
+    // a file"). Cancel keeps the tool armed-but-empty: pressing canvas does nothing.
+    if (t === 'image' && !tools.pendingImage) void armImagePicker();
+  }
+
+  // ---------- S6: style swatch galleries (recent styles + presets) ----------
+  /** The FULL toolbar definition (spec §2.1): nine controls -> ten style keys.
+   *  Excluded by decision D-F2-1: the preset chooser (no standing value). */
+  function toolbarStylePatch() {
+    return {
+      fill: fillIn.value, fillEnabled: !!fillOn.checked,
+      stroke: strokeIn.value, strokeEnabled: !!strokeOn.checked,
+      strokeWidth: Number(widthIn.value), opacity: Number(opacityIn.value),
+      dash: dashSel.value, radius: Number(radiusIn.value),
+      fontFamily: fontSel.value, fontSize: Number(fsIn.value),
+    };
+  }
+  /** S5-UI (client ask #3): "when drawing a new form it always follows what is selected
+   *  in the style toolbar". Two halves make that true, and both run through here:
+   *   (a) every control change writes the bar into store.pendingStyle as well, so the bar
+   *       IS the single source of truth for newly created shapes; and
+   *   (b) when something is selected the bar MIRRORS the selection (first selected element
+   *       wins on a mixed multi-select - same rule the properties panel already uses), so
+   *       the bar never shows a value the next shape would ignore.
+   *  Called from render(), so it cannot go stale after undo/redo/open/load either. */
+  function syncStyleControls() {
+    const first = store.selectedElements()[0];
+    if (!first || !first.style) return;                    // empty selection: leave the bar alone
+    const s = { ...DEFAULT_STYLE, ...first.style };        // missing key == documented default
+    fillIn.value = s.fill; fillOn.checked = !!s.fillEnabled;
+    strokeIn.value = s.stroke; strokeOn.checked = !!s.strokeEnabled;
+    widthIn.value = String(s.strokeWidth); opacityIn.value = String(s.opacity);
+    dashSel.value = s.dash; radiusIn.value = String(s.radius);
+    fontSel.value = s.fontFamily; fsIn.value = String(s.fontSize);
+    store.setPendingStyle(toolbarStylePatch());            // keep bar == pending (see (a))
+  }
+  // Presets are static for the lifetime of the build -> canonicalise once, never per render.
+  const PRESET_SWATCHES = collectPresetStyles();
+
+  /** Paint ONE swatch: a real <svg> holding the miniature that render.swatchMarkup produced
+   *  from a synthetic rect. app.js never hand-builds the artwork - escaping lives in render.js. */
+  function makeSwatchButton(style, title, ariaLabel, onClick) {
+    const b = el('button', 'swatch');
+    b.title = title;                                   // SAFE: textContent-equivalent property
+    b.setAttribute('aria-label', ariaLabel);
+    b.type = 'button';
+    const art = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    art.setAttribute('class', 'swatch-svg');
+    art.setAttribute('viewBox', `0 0 ${SWATCH_W} ${SWATCH_H}`);
+    art.innerHTML = swatchMarkup(style);               // WHITELISTED: render.js escapes all data
+    b.appendChild(art);
+    const tag = el('span', 'swatch-name');
+    tag.textContent = title;                           // SAFE: textContent only
+    b.appendChild(tag);
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function clearChildren(n) {
+    // Element.remove() exists in the browser AND in the DOM stub; removeChild does not.
+    for (const c of [...(n.children || [])]) c.remove();
+  }
+
+  /** Apply a COMPLETE style onto the current selection. One undo step, all ids.
+   *  D-S6-3 (client brief "applies the style to the current selected forms"): with nothing
+   *  selected the click is a TOTAL no-op - no history entry, just a hint. D-S6-4: if every
+   *  selected object already carries that style we push NOTHING, so the undo stack cannot
+   *  fill up with invisible no-ops. */
+  function applySwatchStyle(style, label) {
+    if (!store.selected.size) { toast('Select object(s) first to apply a style'); return; }
+    const targetKey = styleKeyOf(style);
+    const ids = [...store.selected];
+    const changes = ids.filter((id) => {
+      const e = store.get(id);
+      return e && styleKeyOf(e.style) !== targetKey;
+    });
+    if (!changes.length) { toast(`${label} already applied`); return; }
+    store.pushState(store.snapshot());                 // ONE undo step for the whole apply
+    // D-S6-5: write EXACTLY the depicted keys - never fontFamily/fontSize/etc.
+    const patch = swatchPatchOf(style);
+    for (const id of changes) store.updateStyle(id, patch);
+    render();
+    toast(`${label} applied to ${changes.length} object${changes.length === 1 ? '' : 's'}`);
+  }
+
+  /** S6c: decide inline-vs-dropdown from the WINDOW WIDTH, not from layout measurement.
+   *  A measured approach (offsetWidth/scrollWidth) reads 0 under the DOM stub and depends on
+   *  fonts/CSS, so it could not be tested here - an explicit exported threshold can. Cost:
+   *  the threshold is a judgement call, documented at COMPACT_MAX_WIDTH. */
+  function syncResponsiveBar() {
+    const w = (typeof window !== 'undefined' && window.innerWidth) || 1280;
+    const compact = w < COMPACT_MAX_WIDTH;
+    topbar.classList.toggle('topbar-compact', compact);
+    galleryToggle.hidden = !compact;
+    if (!compact) {
+      // Leaving compact mode must not leave an orphan "open" panel parked over the canvas,
+      // nor a stale aria-expanded="true" on a button nobody can see (S6c-5).
+      galleryWrap.classList.toggle('open', false);
+      galleryToggle.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  let swatchSig = null;                                // last rendered content signature
+  /** Rebuild BOTH galleries from model state, but ONLY when their content changed:
+   *  rebuilding unconditionally on every render() would destroy hover/focus mid-click and
+   *  burn nodes on every pan frame. Signature = the ordered list of swatch keys. */
+  function syncSwatchGalleries() {
+    const used = collectUsedStyles(store.elements);
+    const sig = used.map((u) => `${u.key}#${u.count}`).join(';') + '||' + PRESET_SWATCHES.map((p) => p.name).join(',');
+    if (sig === swatchSig) return;
+    swatchSig = sig;
+    clearChildren(recentBox.strip);
+    if (!used.length) {
+      const hint = el('span', 'swatch-empty', 'draw something to collect styles');
+      recentBox.strip.appendChild(hint);
+    }
+    for (const u of used) {
+      const label = styleSummary(u.style);
+      recentBox.strip.appendChild(makeSwatchButton(
+        u.style,
+        `${label}${u.count > 1 ? ` · ${u.count}×` : ''}`,
+        // PAINT from the canonical copy (deterministic), APPLY from the RAW element style:
+        // swatchPatchOf() is then the single authority on what a click writes. Feeding the
+        // click pre-normalised data made that authority untestable (surviving mutant M67).
+        `Apply ${label}`, () => applySwatchStyle(u.raw, label),
+      ));
+    }
+    clearChildren(presetGallery.strip);
+    for (const p of PRESET_SWATCHES) {
+      presetGallery.strip.appendChild(makeSwatchButton(
+        p.style, p.name, `Apply preset ${p.name}`, () => applySwatchStyle(p.raw, `Preset ${p.name}`),
+      ));
+    }
+  }
+
+  /** Human-readable one-liner for a swatch (tooltip + toast). Built from textContent-safe
+   *  strings only; never interpolated into markup. */
+  function styleSummary(s) {
+    const bits = [];
+    bits.push(s.fillEnabled ? `fill ${s.fill}` : 'no fill');
+    bits.push(s.strokeEnabled ? `stroke ${s.stroke} @${s.strokeWidth}` : 'no stroke');
+    if (s.dash && s.dash !== 'solid') bits.push(s.dash);
+    if (Number(s.opacity) < 1) bits.push(`alpha ${s.opacity}`);
+    return bits.join(' · ');
+  }
+
+  // ---------- F4: image picker seam ----------
+  async function armImagePicker() {
+    let picked = null;
+    try { picked = await env.loadImageFile(); }       // null = cancelled (silent, F4-4)
+    catch (e) { toast(`Could not open image: ${e && e.message ? e.message : e}`); return; }
+    if (!picked || typeof picked.dataUrl !== 'string') return;
+    if (!picked.dataUrl.startsWith('data:image/')) { toast('That file is not an image'); return; }   // F4-5
+    const dims = (picked.width > 0 && picked.height > 0)
+      ? { width: picked.width, height: picked.height }   // seam may supply natural size...
+      : await probeImageSize(picked.dataUrl);             // ...else measure via ImageCtor seam
+    if (!dims) { toast('Could not read image dimensions'); return; }
+    if (tools.tool !== 'image') return;                   // user switched tools while picking
+    tools.armImage({ src: picked.dataUrl, width: dims.width, height: dims.height });
+    render();   // S5-F4c: paint the ghost straight away (derived live in imageGhostMarkup)
+    toast('Click the canvas to place the image');
+  }
+  function probeImageSize(src) {
+    return new Promise((resolve) => {
+      if (typeof env.ImageCtor !== 'function') { resolve(null); return; }
+      let settled = false;
+      const done = (w, h) => { if (!settled) { settled = true; resolve(w > 0 && h > 0 ? { width: w, height: h } : null); } };
+      try {
+        const img = new env.ImageCtor();
+        img.onload = () => done(img.naturalWidth || img.width || 0, img.naturalHeight || img.height || 0);
+        img.onerror = () => done(0, 0);
+        img.src = src;
+      } catch (e) { done(0, 0); }
+    });
+  }
 
   store.onChange(render);
+  // S6c: the bar must react to the user dragging the window edge, not only to edits.
+  window.addEventListener('resize', () => render());
 
   // ---------- pointer plumbing ----------
   const toScreen = (e) => { const r = svg.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
@@ -407,14 +651,29 @@ export function boot(root, deps = {}) {
     }
     else if (res.type === 'preview-marquee' && res.rect) preview = { kind: 'marquee', rect: res.rect };
     else if (res.type === 'preview-text') preview = { kind: 'text', at: res.world };
+    // S5-F4c (client): "draw the placeholder of the size of the image to preview where the
+    // image will land". Same principle as every other drag preview (T6): build a PROVISIONAL
+    // MODEL ELEMENT and let render.elementToSvg paint it, so the ghost cannot disagree with
+    // the commit - it is literally the same renderer, and it shows the image WITH the current
+    // bar style (opacity/dash), i.e. a true WYSIWYG placement preview.
+    else if (res.type === 'preview-image' && res.img) {
+      preview = { kind: 'shape', el: imagePreviewElement(res.img, res.world) };
+    }
     if (res.cursor) svg.style.cursor = res.cursor;
     handle(res);
   });
   window.addEventListener('mouseup', (e) => {
+    // INVARIANT: clearing transient paint state MUST be followed by a render, or the DOM
+    // keeps the previous frame. Caught by S5-F4c: after placing an image, pointerUp() returns
+    // 'none' (the stamp commits on mousedown, so there is no live drag to finish), handle()
+    // skipped the render - and the PLACE ghost stayed burned into the overlay at the old
+    // cursor position until some unrelated repaint erased it.
+    const hadPreview = !!preview;
     preview = null;
     const res = tools.pointerUp(toScreen(e));
     if (res.type === 'edit-text') startTextEditor(res.id);
     handle(res);
+    if (hadPreview && res.type === 'none') render();
   });
   svg.addEventListener('dblclick', (e) => {
     const hit = tools.pick(viewport.screenToWorld(toScreen(e)));
@@ -453,8 +712,10 @@ export function boot(root, deps = {}) {
   // there is none - so choosing a colour then drawing a shape keeps that colour
   // (previously the empty-selection case silently discarded the user's choice).
   const applyStyle = (patch) => {
+    // S5-UI (client ask #3): the bar is the source of truth for NEW shapes, so a control
+    // change ALWAYS lands in pendingStyle - and ALSO on the selection when there is one.
+    store.setPendingStyle(patch);
     if (store.selected.size) { store.pushState(store.snapshot()); for (const id of store.selected) store.updateStyle(id, patch); }
-    else store.setPendingStyle(patch);
     render();
   };
   const eachSelected = (fn) => { if (!store.selected.size) return; store.pushState(store.snapshot()); for (const id of store.selected) fn(id); render(); };
@@ -468,12 +729,8 @@ export function boot(root, deps = {}) {
   radiusIn.addEventListener('change', () => applyStyle({ radius: Number(radiusIn.value) }));
   fontSel.addEventListener('change', () => applyStyle({ fontFamily: fontSel.value }));
   fsIn.addEventListener('change', () => applyStyle({ fontSize: Number(fsIn.value) }));
-  presetSel.addEventListener('change', () => {
-    if (!presetSel.value) return;
-    // T6: presets follow the same rule - onto the selection, or into pending style.
-    applyStyle({ ...STYLE_PRESETS[presetSel.value] });
-    presetSel.value = '';
-  });
+  // S6: the old preset <select> is GONE - presets are now miniature buttons in their own
+  // gallery (see syncSwatchGalleries), applied through applySwatchStyle like any other style.
 
   // ---------- right-click properties panel ----------
   function openPanel(e) {
@@ -500,6 +757,26 @@ export function boot(root, deps = {}) {
     addRow('radius', numField('radius', 0, 500));
     addRow('font size', numField('fontSize', 4, 400));
     const grid = el('div', 'prop-grid');
+    // S5-F4d (client): images get an extra action - snap back to the natural pixel size
+    // captured at pick time. Centre stays put so the image resizes IN PLACE instead of
+    // jumping away under the cursor. One undo step; hidden for every other element type.
+    if (first.type === 'image') {
+      rows.push((() => {
+        const row = el('div', 'prop-row');
+        row.appendChild(btn('original size', '', () => {
+          store.pushState(store.snapshot());
+          for (const id of ids) {
+            const e = store.get(id);
+            if (!e || e.type !== 'image') continue;
+            const nw = e.natW > 0 ? e.natW : e.w, nh = e.natH > 0 ? e.natH : e.h;
+            const cx = e.x + e.w / 2, cy = e.y + e.h / 2;          // resize about the centre
+            e.w = nw; e.h = nh; e.x = cx - nw / 2; e.y = cy - nh / 2;
+          }
+          render();
+        }));
+        return row;
+      })());
+    }
     grid.append(
       btn('front', '', () => { store.bringToFront(ids[0]); render(); }),
       btn('back', '', () => { store.sendToBack(ids[0]); render(); }),
@@ -676,7 +953,62 @@ function resolveEnv(deps) {
     // production resolves lazily against browser APIs.
     saveFile: typeof deps.saveFile === 'function' ? deps.saveFile : browserSaveFile,
     openFile: typeof deps.openFile === 'function' ? deps.openFile : browserOpenFile,
+    // F4 seam: image picker -> {name, dataUrl} | null. Tests inject fakes.
+    loadImageFile: typeof deps.loadImageFile === 'function' ? deps.loadImageFile : browserLoadImageFile,
   };
+}
+
+/** F4 default picker: File System Access API when present, else hidden <input type=file>
+ *  accept=image/* + FileReader.readAsDataURL. Resolves {name,dataUrl} or null on cancel. */
+function browserLoadImageFile() {
+  const ACCEPT = { 'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'] };
+  if (typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function') {
+    return window.showOpenFilePicker({ types: [{ description: 'Image', accept: ACCEPT }] })
+      .then(async (handles) => {
+        const [handle] = handles;
+        const file = await handle.getFile();
+        return { name: file.name, dataUrl: await readFileAsDataURL(file) };
+      }, () => null);                                              // AbortError -> cancel
+  }
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') { reject(new Error('no DOM available to pick an image')); return; }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.display = 'none';
+    let settled = false;
+    input.addEventListener('cancel', () => { if (!settled) { settled = true; input.remove(); resolve(null); } });
+    input.addEventListener('change', () => {
+      if (settled) return;
+      settled = true;
+      const file = input.files && input.files[0];
+      input.remove();
+      if (!file) { resolve(null); return; }
+      readFileAsDataURL(file).then((dataUrl) => resolve({ name: file.name, dataUrl }), reject);
+    });
+    document.body && document.body.appendChild(input);
+    input.click();
+  });
+}
+
+function readFileAsDataURL(file) {
+  if (typeof file.arrayBuffer === 'function' && typeof btoa === 'function') {
+    return file.arrayBuffer().then((buf) => {
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      const CHUNK = 0x8000;                                        // avoid arg-count limits on big files
+      for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+      const mime = file.type || 'application/octet-stream';
+      return `data:${mime};base64,${btoa(bin)}`;
+    });
+  }
+  return new Promise((resolve, reject) => {
+    if (typeof FileReader === 'undefined') { reject(new Error('no FileReader available')); return; }
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result));
+    fr.onerror = () => reject(fr.error || new Error('read failed'));
+    fr.readAsDataURL(file);
+  });
 }
 
 /** F6 default sink: Blob + <a download>. Mirrors browserDownload but kept separate —

@@ -1,5 +1,15 @@
 # F2 - "Apply style" button on the top toolbar
 
+> **SUPERSEDED (S6, session 5) - DO NOT IMPLEMENT.** The client asked for the always-visible
+> variant of this button, then observed that once selecting an object restores ITS style into the
+> bar (the S5 mirror fix), "apply the bar onto the selection" became a no-op: *"the apply style
+> button has no meaning now ... let's work around this".* He replaced it with the Recent/Presets
+> swatch galleries - see `docs/specs/S6-style-swatches.md`. Everything below is kept as the
+> historical record of what was built and signed off; §2.2 in particular describes the OLD
+> hide-on-match rule that the client explicitly overrode before deletion.
+> Artifacts retired with it: `.apply-style` CSS, mutants M49-M52, tests now at
+> `tests_parked/apply_style_s5_superseded.test.js`.
+
 Client intent (session 2 brief): when the selected object(s) do NOT match the toolbar
 controls, show a button that applies ALL toolbar definitions to the selection. Works
 for multi-selection too.

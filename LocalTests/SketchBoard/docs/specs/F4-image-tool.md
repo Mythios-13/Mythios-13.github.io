@@ -67,3 +67,20 @@ M53 image missing from RESIZABLE_BOX_TYPES       -> kills F4-7/F4-8 (no handles 
 M54 aspect polarity inverted (shift locks)        -> kills F4-7+F4-8 jointly
 M55 renderer drops preserveAspectRatio/size attrs -> kills F4-6
 M56 src written without escapeXml                 -> kills F4-9 hostile-src
+
+## 7. S5 ADDITIONS (session 5 client follow-ups - implemented, browser leg pending)
+1. **PLACE ghost.** While armed, a provisional MODEL ELEMENT of exactly the stamp size follows
+   the cursor, painted by elementToSvg through the normal preview path - so it shows the real
+   image with the current bar style and cannot disagree with the commit.
+2. **One pick = one stamp.** After placing, the tool returns to 'select' and the new image is
+   selected, so corner handles are immediately usable. Re-clicking the image button re-arms.
+3. **"original size" in the right-click menu** (images only): restores natural pixel size about
+   the CENTRE, one undo step. Natural size is captured at stamp time as natW/natH; if absent the
+   action degrades to a no-op rather than destroying geometry.
+4. **BUG FOUND AND FIXED during this work:** mouseup cleared the transient `preview` but
+   pointerUp() returned 'none', so nothing repainted and the ghost stayed BURNED INTO the overlay
+   after the stamp. Invariant now enforced: *clearing transient paint state must be followed by a
+   render*. Regression-pinned (S5-F4c / mutant M61). Found by a test written for the feature, not
+   by the client.
+Mutants M57-M61 cover the ghost branch, ghost centring, auto-select-tool, natural-size restore
+and the burn-in regression.
