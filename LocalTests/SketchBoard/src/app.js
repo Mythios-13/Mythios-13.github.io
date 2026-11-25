@@ -168,6 +168,7 @@ export function boot(root, deps = {}) {
     ['export-svg', 'Save as SVG'],
     ['go-center', 'Go to center'],
     ['clear', 'Clear canvas'],
+    ['help', 'Manual & keys'],           // S7: in-app reference card (client request)
   ];
   for (const [action, label] of MENU_ACTIONS) {
     const b = el('button', 'menu-item', label);
@@ -186,6 +187,100 @@ export function boot(root, deps = {}) {
   function toast(msg) { if (!pinnedMsg) hud.textContent = msg; }
   function pinMessage(msg) { pinnedMsg = msg; hud.textContent = msg; }
 
+  // ---------- S7: in-app manual / key-command overlay (client request) ----------
+  // Built ONCE from DOM APIs + textContent (never innerHTML - the app.test.js whitelist still
+  // holds) and REUSED on every toggle, so repeated clicks cannot pile up panels.
+  // The tool rows are GENERATED from the live SHORTCUT_TOOLS / EXTRA_TOOL_SHORTCUTS maps: a
+  // shortcut added to the keymap shows up in the manual automatically, and a test asserts that
+  // coupling (S7-3). Hand-written docs drift; generated ones cannot.
+  const TOOL_BLURB = {
+    select: 'Select, move, resize', hand: 'Pan the canvas', rect: 'Rectangle', ellipse: 'Ellipse',
+    triangle: 'Triangle', diamond: 'Diamond', star: 'Star', line: 'Line', arrow: 'Arrow',
+    path: 'Freehand draw', text: 'Place text', image: 'Place an image file',
+  };
+  let helpPanel = null;
+  function kbdRow(keysArr, desc) {
+    const row = el('div', 'help-row');
+    const keys = el('span', 'help-keys');
+    for (const k of keysArr) keys.appendChild(el('kbd', 'kbd', k));
+    row.append(keys, el('span', 'help-desc', desc));   // SAFE: textContent only
+    return row;
+  }
+  function helpSection(title, rows) {
+    const s = el('div', 'help-section');
+    s.appendChild(el('div', 'help-section-title', title));
+    const g = el('div', 'help-grid');
+    for (const r of rows) g.appendChild(r);
+    s.appendChild(g);
+    return s;
+  }
+  function buildHelpPanel() {
+    const scrim = el('div', 'help-panel'); scrim.hidden = true;
+    const card = el('div', 'help-card');
+    const head = el('div', 'help-head');
+    head.appendChild(el('div', 'help-title', 'SketchBoard \u00b7 quick manual'));
+    const close = el('button', 'help-close', '\u00d7');
+    close.type = 'button'; close.title = 'Close (Esc)';
+    close.addEventListener('click', () => { scrim.hidden = true; });
+    head.appendChild(close);
+    card.appendChild(head);
+
+    // --- tools: derived from the LIVE keymap, never typed by hand
+    const live = { ...SHORTCUT_TOOLS, ...EXTRA_TOOL_SHORTCUTS };
+    const toolRows = Object.keys(live)
+      .sort((a, b) => live[a].localeCompare(live[b]))
+      .map((key) => kbdRow([key], `${live[key]} \u2014 ${TOOL_BLURB[live[key]] || live[key]}`));
+    card.appendChild(helpSection('Tools (press a letter)', toolRows));
+
+    card.appendChild(helpSection('Edit', [
+      kbdRow(['Ctrl', 'Z'], 'Undo'),
+      kbdRow(['Ctrl', 'Shift', 'Z'], 'Redo (or Ctrl+Y)'),
+      kbdRow(['Ctrl', 'D'], 'Duplicate the selection'),
+      kbdRow(['Delete', 'or', 'Backspace'], 'Delete the current selection'),
+      kbdRow(['Esc'], 'Deselect \u00b7 close panels \u00b7 close this manual (Escape)'),
+    ]));
+
+    card.appendChild(helpSection('Canvas', [
+      kbdRow(['Wheel'], 'Zoom at the cursor'),
+      kbdRow(['Ctrl', 'Wheel'], 'Finer zoom (trackpad pinch)'),
+      kbdRow(['Middle-click', '+ drag'], 'Pan the canvas'),
+      kbdRow(['Space', '+ drag'], 'Pan without leaving your tool'),
+      kbdRow(['Right-click'], 'Properties panel for what you hit'),
+      kbdRow(['Double-click', 'status bar'], 'Reset zoom to exactly 100%'),
+    ]));
+
+    card.appendChild(helpSection('Shapes & images', [
+      kbdRow(['Drag corners'], 'Resize any shape freely (shapes always free-deform)'),
+      kbdRow(['Images'], 'Aspect ratio LOCKED by default \u00b7 hold Shift to free it'),
+      kbdRow(['Image tool', '+ click'], 'Places the picked file centred, then hands back to Select'),
+      kbdRow(['Right-click', '· original size'], 'Restore an image to its natural pixel size'),
+    ]));
+
+    card.appendChild(helpSection('Text', [
+      // THE CLIENT SENTENCE, stated accurately: the gesture is a DOUBLE-CLICK, and because
+      // hit-testing reads the element itself (not the handle chrome), it keeps working when the
+      // double-click lands on the selection handles sitting over the glyphs.
+      kbdRow(['Double-click'], 'Edit text \u2014 aim anywhere on the text, INCLUDING over '
+        + 'its selection handles; Enter saves, Esc cancels'),
+      kbdRow(['Text tool', '+ click'], 'Place a new text box'),
+    ]));
+
+    card.appendChild(helpSection('Style', [
+      kbdRow(['Style bar'], 'Mirrors the selected object \u00b7 new shapes inherit it'),
+      kbdRow(['Recent / Presets'], 'Click a miniature to style the current selection'),
+    ]));
+
+    scrim.appendChild(card);
+    // Click the dim backdrop (not the card) to dismiss.
+    scrim.addEventListener('mousedown', (e) => { if (e.target === scrim) scrim.hidden = true; });
+    return scrim;
+  }
+  // Built AT BOOT (hidden), not lazily: the reference card is part of the shell, so it exists
+  // for inspection/keyboard focus from the first frame, and exactly one node can ever exist.
+  helpPanel = buildHelpPanel();
+  root.appendChild(helpPanel);
+  function toggleHelp() { helpPanel.hidden = !helpPanel.hidden; }
+
   function runMenuAction(action) {
     switch (action) {
       case 'export-svg': return doExportSvg();
@@ -194,6 +289,7 @@ export function boot(root, deps = {}) {
       case 'clear': return doClearCanvas();
       case 'save-disk': return doSaveDisk();
       case 'open-disk': return doOpenDisk();
+      case 'help': return toggleHelp();
       default: return undefined;
     }
   }
@@ -699,7 +795,12 @@ export function boot(root, deps = {}) {
       if (store.selected.size) { store.pushState(store.snapshot()); store.deleteElements([...store.selected]); }
       return;
     }
-    if (e.key === 'Escape') { store.clearSelection(); closePanel(); closeTextEditor(); render(); return; }
+    if (e.key === 'Escape') {
+      // S7: Esc also dismisses the manual, WITHOUT losing its original meanings (deselect,
+      // close properties panel, cancel text editing) - all three still run below.
+      if (helpPanel && !helpPanel.hidden) helpPanel.hidden = true;
+      store.clearSelection(); closePanel(); closeTextEditor(); render(); return;
+    }
     if (e.key === ' ') { const r = tools.keydown({ key: ' ', repeat: e.repeat }); handle(r); if (r.type === 'cursor') svg.style.cursor = r.cursor; return; }
     const k = e.key.toLowerCase();
     const tool = SHORTCUT_TOOLS[k] || EXTRA_TOOL_SHORTCUTS[k];

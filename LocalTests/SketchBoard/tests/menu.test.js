@@ -75,9 +75,11 @@ test('M4 burger menu exists top-right, auto-OPEN, exactly the requested actions,
   const actions = items().map((x) => x.dataset.action).sort();
   // F6 added save-disk/open-disk (client: save+load to disk). Pin updated to the new
   // SIX-action contract but kept EXACT (deepEqual) so an accidental 7th entry still fails.
-  assert.deepEqual(actions, ['clear', 'export-png', 'export-svg', 'go-center', 'open-disk', 'save-disk'], 'exactly the requested actions (T7 four + F6 two)');
+  // S7 added a seventh action ('help' -> in-app manual). Pin kept EXACT (deepEqual) so an
+  // accidental eighth entry still fails; contract widened six -> seven by client request.
+  assert.deepEqual(actions, ['clear', 'export-png', 'export-svg', 'go-center', 'help', 'open-disk', 'save-disk'], 'exactly the requested actions (T7 four + F6 two + S7 help)');
   const labels = items().map((x) => x.textContent).join('|');
-  for (const want of ['PNG', 'SVG', 'center', 'Clear', 'Save to disk', 'Open from disk']) {
+  for (const want of ['PNG', 'SVG', 'center', 'Clear', 'Save to disk', 'Open from disk', 'Manual']) {
     assert.ok(new RegExp(want, 'i').test(labels), 'label mentions ' + want + ', got: ' + labels);
   }
   // Toggle collapses and expands again.

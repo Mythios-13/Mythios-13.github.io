@@ -1,4 +1,13 @@
 * { box-sizing: border-box; margin: 0; }
+/* [hidden] MUST win over author rules. The UA stylesheet's [hidden]{display:none} loses to any
+   author rule that sets display - and .help-panel{display:flex}, .props-panel etc. do exactly
+   that, so el.hidden=true had NO visual effect (client saw the manual at boot and could not close
+   it: x/backdrop/Esc all set hidden=true and CSS overrode every one). !important is deliberate:
+   it makes the failure mode loud (an author rule has to fight it explicitly) instead of silent.
+   Pinned by S7-13/S7-14, which scan app.js for hidden-toggled classes and reject unguarded
+   author display rules - the DOM stub has no CSS engine, so property assertions alone were blind
+   to this whole bug class. */
+[hidden] { display: none !important; }
 html, body, #app { height: 100%; overflow: hidden; font-family: Inter, system-ui, sans-serif; }
 #app { position: relative; background: #f6f8fb; user-select: none; }
 svg.board { position: absolute; inset: 0; display: block; touch-action: none; }
@@ -28,6 +37,22 @@ svg.board { position: absolute; inset: 0; display: block; touch-action: none; }
 .topbar-compact .style-gallery.open { display: flex; }
 .topbar-compact .preset-box { padding-left: 0; border-left: 0; }
 .topbar-compact .swatch-strip { max-width: min(70vw, 420px); }
+/* S7: quick manual overlay. Dim scrim + centred card, two-column rows, real <kbd> chips. */
+.help-panel { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; z-index: 40; padding: 24px; }
+.help-card { width: min(760px, 100%); max-height: min(84vh, 720px); overflow-y: auto; background: #fff; border-radius: 14px; box-shadow: 0 24px 60px rgba(15,23,42,.35); padding: 18px 22px 22px; }
+.help-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 10px; margin-bottom: 6px; border-bottom: 1px solid #eef2f7; position: sticky; top: 0; background: #fff; }
+.help-title { font-size: 15px; font-weight: 700; color: #0f172a; }
+.help-close { width: 28px; height: 28px; border: 1px solid #dbe2ea; border-radius: 8px; background: #f8fafc; font-size: 16px; line-height: 1; cursor: pointer; color: #475569; }
+.help-close:hover { background: #eef2f7; color: #0f172a; }
+.help-section { margin: 14px 0 0; }
+.help-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #64748b; margin-bottom: 6px; }
+.help-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2px 18px; }
+.help-row { display: flex; align-items: baseline; gap: 10px; padding: 4px 0; border-bottom: 1px dashed #f1f5f9; }
+.help-keys { display: inline-flex; gap: 4px; flex: none; min-width: 118px; }
+.help-desc { font-size: 12.5px; color: #334155; }
+kbd.kbd { display: inline-block; min-width: 20px; text-align: center; padding: 1px 6px; border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 5px; background: #f8fafc; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #0f172a; white-space: nowrap; }
+@media (max-width: 560px) { .help-grid { grid-template-columns: 1fr; } .help-keys { min-width: 104px; } }
+
 /* S6: the F2 "Apply style" button was REMOVED (the mirror fix made it a no-op); its
    galleries above replaced it. No .apply-style rules remain on purpose - a stale rule
    here would hide a resurrected button nobody asked for. */
