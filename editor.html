@@ -3,243 +3,665 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Offline JSON Editor</title>
-  <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/markdown-it/dist/markdown-it.min.js"></script>
+  <title>Content Editor</title>
+  <script src="assets/vendor/vue.global.prod.js"></script>
+  <script src="assets/vendor/markdown-it.min.js"></script>
+  <script src="assets/vendor/purify.min.js"></script>
+  <script src="assets/site-core.js"></script>
   <style>
+    :root { --bg:#eef1f5; --panel:#fff; --text:#23272f; --muted:#6b7280; --accent:#6200ea;
+      --accent-soft:#efe7ff; --border:#d9dce1; --ok:#28a745; --warn:#c77700; --err:#dc3545; }
     * { box-sizing: border-box; }
-    body {
-      font-family: 'Open Sans', sans-serif;
-      margin: 0;
-      padding: 0;
-      background: #eef1f5;
-      color: #333;
-      line-height: 1.6;
-    }
-    .container {
-      max-width: 1000px;
-      margin: 40px auto;
-      background: #fff;
-      padding: 30px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    h1 {
-      text-align: center;
-      margin-bottom: 20px;
-      font-weight: 600;
-      color: #444;
-    }
-    .nav {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    .nav a {
-      display: inline-block;
-      margin: 0 8px;
-      padding: 8px 16px;
-      text-decoration: none;
-      color: #6200ea;
-      border-radius: 4px;
-      transition: background 0.3s, color 0.3s;
-    }
-    .nav a:hover,
-    .nav a.active {
-      background: #6200ea;
-      color: #fff;
-    }
-    .card {
-      border: 1px solid #ddd;
-      padding: 20px;
-      margin-bottom: 20px;
-      border-radius: 8px;
-      background: #fafafa;
-      animation: fadeIn 0.5s ease-in-out;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    input, textarea, select {
-      width: 100%;
-      padding: 10px;
-      margin: 5px 0 15px;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      font-size: 1rem;
-    }
-    label {
-      font-weight: 600;
-      margin-bottom: 5px;
-      display: block;
-      color: #555;
-    }
-    button {
-      padding: 10px 16px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 1rem;
-      transition: background 0.3s;
-      margin-bottom: 10px;
-    }
-    .btn-add { background: #28a745; color: #fff; }
-    .btn-remove { background: #dc3545; color: #fff; }
-    .btn-download { background: #007bff; color: #fff; }
-    button:hover { opacity: 0.9; }
-    .preview {
-      border: 1px solid #ddd;
-      padding: 15px;
-      border-radius: 5px;
-      background: #f9f9f9;
-      margin-top: 10px;
-    }
-    @media (max-width: 600px) {
-      .container { padding: 15px; }
-      input, textarea, select { font-size: 0.9rem; }
-      button { font-size: 0.9rem; }
-    }
+    body { margin:0; background:var(--bg); color:var(--text); line-height:1.6;
+      font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+    .container { max-width:1080px; margin:32px auto; padding:0 16px; }
+    h1 { font-size:1.5rem; margin:0 0 6px; }
+    .topbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+    .grow { flex:1 1 auto; }
+    button { padding:9px 14px; border:none; border-radius:8px; cursor:pointer; font-size:.95rem;
+      color:#fff; background:#555; }
+    button:hover { opacity:.92; }
+    button.secondary { background:var(--panel); color:var(--text); border:1px solid var(--border); }
+    button.ok { background:var(--ok); } button.danger { background:var(--err); }
+    button.primary { background:var(--accent); }
+    input[type=text], textarea, select { width:100%; padding:9px 11px; border-radius:8px;
+      border:1px solid var(--border); font-size:.97rem; font-family:inherit; background:#fff; color:#23272f; }
+    textarea { resize: vertical; min-height: 90px; }
+    label { font-weight:600; font-size:.88rem; display:block; margin:12px 0 4px; color:#444; }
+    .layout { display:grid; grid-template-columns: 240px 1fr 1fr; gap:16px; align-items:start; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    .panel { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px; }
+    .panel h2 { font-size:1rem; margin:0 0 10px; }
+    .pagelist a { display:block; padding:7px 10px; border-radius:8px; text-decoration:none;
+      color:var(--text); font-size:.93rem; cursor:pointer; }
+    .pagelist a.active { background:var(--accent); color:#fff; }
+    .pagelist a small { opacity:.65; }
+    .preview { border:1px dashed var(--border); border-radius:8px; padding:12px; background:#fbfbfd;
+      overflow:auto; max-height: 640px; }
+    .issues { list-style:none; padding:0; margin:6px 0; font-size:.86rem; }
+    .issues li { padding:4px 8px; border-radius:6px; margin-bottom:4px; }
+    .issues li.error { background:#fdecea; color:#7c1d15; }
+    .issues li.warn { background:#fff7e0; color:#6b4d00; }
+    .badge { font-size:.75rem; padding:2px 8px; border-radius:999px; background:#eee; color:#555; }
+    .status-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+    .dot-dirty { background:var(--warn); } .dot-clean { background:var(--ok); }
+    .row { display:flex; gap:8px; }
+    .hint { color:var(--muted); font-size:.8rem; }
+    code.inline { background:#eceff3; padding:1px 5px; border-radius:4px; }
+    .banner { background:#fff4ce; color:#5c4a00; border:1px solid #e6cf7a; padding:10px 14px;
+      border-radius:8px; margin-bottom:14px; font-size:.9rem; }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex;
+      align-items:center; justify-content:center; z-index:50; padding:16px; }
+    .modal { background:#fff; border-radius:12px; max-width:760px; width:100%; max-height:80vh;
+      overflow:auto; padding:18px; }
+    .modal pre { white-space:pre-wrap; word-break:break-word; font-size:.8rem; background:#f4f5f7;
+      padding:12px; border-radius:8px; }
+    dialog { border:none; border-radius:12px; padding:0; }
+    /* template editor */
+    .template-editor { grid-column: 1 / -1; }
+    .tpl-grid { display:grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap:18px; align-items:start; }
+    @media (max-width: 900px) { .tpl-grid { grid-template-columns: 1fr; } }
+    .token-bar { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 6px; }
+    .token-bar button { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.78rem; padding:7px 11px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; cursor:pointer; }
+    .token-bar button:hover { border-color:var(--accent); color:var(--accent); opacity:1; }
+    .tpl-preview h3 { font-size:.95rem; margin:0 0 8px; }
+    .tpl-preview .preview { max-height:420px; }
+    select#pageIcon { max-width:280px; }
+    /* preview header (icon + title) */
+    .preview-head { display:flex; align-items:center; gap:10px; margin:0 0 12px; padding:0 0 12px; border-bottom:1px solid var(--border); }
+    .preview-icon { width:30px; height:30px; border-radius:8px; display:grid; place-items:center; background:var(--accent-soft, #efe7ff); color:var(--accent); flex:none; }
+    .preview-icon svg { width:17px; height:17px; }
+    .preview-title { font-weight:700; font-size:1rem; letter-spacing:-0.01em; color:var(--text); }
   </style>
 </head>
 <body>
   <div id="editor" class="container">
-    <h1>📄 JSON Content Editor</h1>
-    <nav class="nav">
-      <a v-for="(page, index) in pages" 
-         :key="index" 
-         href="#"
-         :class="{ active: currentPageIndex === index }"
-         @click.prevent="selectPage(page, index)">
-         {{ page.title || 'Untitled' }}
-      </a>
-    </nav>
-    <div v-if="currentPageIndex !== null" class="card">
-      <label for="pageTitle">Title:</label>
-      <input id="pageTitle" v-model="currentPage.title" placeholder="Page Title" />
+    <div v-if="fatal" class="banner">{{ fatal }}</div>
+    <div v-if="!purifyOk" class="banner">DOMPurify missing — previews are unsanitized. Do not trust this file until vendored assets are restored.</div>
 
-      <label for="pageContent">Content (Markdown):</label>
-      <textarea id="pageContent" v-model="currentPage.content" placeholder="Page Content" rows="6"></textarea>
+    <div class="topbar">
+      <input id="siteTitle" type="text" v-model="data.title" style="max-width:340px;font-size:1.1rem;font-weight:600" title="Site title" />
+      <h1 style="font-size:1.05rem;color:var(--muted);margin:0">Content Editor</h1>
+      <span class="badge"><span class="status-dot" :class="dirty ? 'dot-dirty' : 'dot-clean'"></span>{{ dirty ? 'unsaved changes' : 'saved' }}</span>
+      <span class="badge" v-if="lastSavedAt">draft saved {{ lastSavedAt }}</span>
+      <span class="grow"></span>
+      <button class="secondary" @click="viewSite">👁 View site</button>
+      <button class="secondary" @click="importOpen=!importOpen">📥 Import</button>
+      <button class="secondary" @click="showJson=!showJson">{ } JSON</button>
+      <button class="primary" @click="downloadJSON">⬇️ Download content.json</button>
+    </div>
 
-      <label for="templateSelect">Template:</label>
-      <select id="templateSelect" v-model="currentPage.template" @change="templateChange">
-        <option v-for="template in templates" :value="template.id">
-          {{ template.name }}
-        </option>
-      </select>
+    <ul class="issues" v-if="errors.length">
+      <li class="error" v-for="(e,i) in errors" :key="'e'+i"><b>{{ e.path }}</b> — {{ e.message }}</li>
+    </ul>
 
-      <div v-if="currentPage.extraData">
-        <label>Additional Data:</label>
-        <div v-for="(value, id) in currentPage.extraData" :key="id">
-          <small style="color: #666;">{{ id }}</small>
-          <textarea v-model="currentPage.extraData[id]" placeholder="Additional Data" rows="2"></textarea>
+    <div class="layout">
+      <aside class="panel">
+        <h2>Pages <span class="badge">{{ pages.length }}</span></h2>
+        <div class="pagelist">
+          <a v-for="(page, index) in pages" :key="String(page.id)+index"
+             :class="{ active: selectedIndex === index }"
+             @click="selectPage(index)">
+            {{ page.title || 'Untitled' }}
+            <small v-if="unknownTemplate(page)"> ⚠</small>
+          </a>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="ok" @click="addPage">➕ Add</button>
+          <button class="secondary" @click="moveSelected(-1)" :disabled="selectedIndex<=0">↑</button>
+          <button class="secondary" @click="moveSelected(1)" :disabled="selectedIndex===pages.length-1">↓</button>
+          <button class="danger" @click="removeSelected">🗑</button>
+        </div>
+        <hr/>
+        <h2>Templates <span class="badge">{{ templates.length }}</span></h2>
+        <div class="pagelist">
+          <a v-for="t in templates" :key="t.id" :class="{ active: editingTemplate && String(editingTemplate.id) === String(t.id) }" @click="editTemplate(t)" title="Edit this template">
+            {{ t.name }} <small>#{{ t.id }} · {{ templateUsage(t.id) }} page(s)</small>
+          </a>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="ok" @click="addTemplate">➕ Template</button>
+          <button class="secondary" @click="closeTemplateEditor" v-if="editingTemplate">✕ Close editor</button>
+        </div>
+      </aside>
+
+      <section class="panel" v-if="currentPage">
+        <label for="pageTitle">Title</label>
+        <input id="pageTitle" type="text" v-model="currentPage.title" placeholder="Page title" />
+
+        <label for="pageId">ID <span class="hint">(deep-link &amp; stable reference)</span></label>
+        <div class="row">
+          <input id="pageId" type="text" v-model="currentPage.id" @change="onIdChange" />
+          <button class="secondary" @click="regenerateId" title="Generate from title">↻</button>
+        </div>
+        <p class="hint" v-if="idIssues.length" style="color:var(--err)">{{ idIssues.join(', ') }}</p>
+
+        <label for="templateSelect">Template</label>
+        <select id="templateSelect" v-model="currentPage.template" @change="onTemplateChange">
+          <option v-for="t in templates" :value="t.id">{{ t.name }} (#{{ t.id }})</option>
+        </select>
+        <p class="hint" v-if="unknownTemplate(currentPage)">
+          Unknown template — falls back to default. <a href="#" @click.prevent="fixTemplate">Reset to default</a>
+        </p>
+
+        <label for="pageIcon">Icon <span class="hint">(shown in the side menu &amp; page header)</span></label>
+        <select id="pageIcon" v-model="currentPage.icon">
+          <option value="">— none —</option>
+          <option v-for="ic in iconOptions" :value="ic">{{ ic }}</option>
+        </select>
+
+        <label for="pageContent">Content (markdown)
+          <span class="hint">— {{ wordCount }} words</span>
+        </label>
+        <textarea id="pageContent" v-model="currentPage.content" rows="14"
+          placeholder="# Heading&#10;&#10;[Link label](https://example.com)"></textarea>
+
+        <template v-if="extraFields.length">
+          <div v-for="field in extraFields" :key="field">
+            <label>{{ field }} <span class="hint">(extraData)</span></label>
+            <textarea v-model="currentPage.extraData[field]" rows="3"
+              :placeholder="'Value for ' + field"></textarea>
+          </div>
+        </template>
+
+        <p class="hint">Changes autosave to this browser only. To publish: <b>Download</b> → replace
+          <code class="inline">content.json</code> in the repo → commit.</p>
+      </section>
+      <section class="panel" v-else><p class="hint">No page selected. Use ➕ Add to create one.</p></section>
+
+      <section class="panel">
+        <h2>Live preview</h2>
+        <div class="preview" v-html="renderedPreview"></div>
+      </section>
+    </div>
+
+    <!-- JSON viewer -->
+    <div class="modal-backdrop" v-if="showJson" @click.self="showJson=false">
+      <div class="modal">
+        <h2>content.json <span class="badge">{{ jsonSizeKb }} KB</span></h2>
+        <ul class="issues" v-if="warnings.length">
+          <li class="warn" v-for="(w,i) in warnings" :key="'w'+i"><b>{{ w.path }}</b> — {{ w.message }}</li>
+        </ul>
+        <pre>{{ prettyJson }}</pre>
+        <div style="display:flex;gap:8px">
+          <button class="secondary" @click="copyJson">{{ copied ? '✅ Copied' : '📋 Copy' }}</button>
+          <button class="primary" @click="showJson=false">Close</button>
         </div>
       </div>
-
-      <label>Preview:</label>
-      <div class="preview" v-html="applyTemplate(currentPage)"></div>
-      <button class="btn-remove" @click="removePage(currentPageIndex)">❌ Remove</button>
     </div>
-    <button class="btn-add" @click="addPage">➕ Add Page</button>
-    <button class="btn-download" @click="downloadJSON">⬇️ Download JSON</button>
 
-    <h1>📄 Preview of All Pages</h1>
-    <div v-for="(page, index) in pages" :key="index" class="card">
-      <div class="preview" v-html="applyTemplate(page)"></div>
-      <button class="btn-remove" @click="removePage(index)">❌ Remove</button>
+    <!-- Import -->
+    <div class="modal-backdrop" v-if="importOpen" @click.self="importOpen=false">
+      <div class="modal">
+        <h2>Import content.json</h2>
+        <p class="hint">Replaces the current working copy (it stays in memory + draft until you download).</p>
+        <input type="file" accept="application/json,.json" @change="onFilePicked" />
+        <label>…or paste JSON</label>
+        <textarea v-model="importText" rows="10" placeholder='{ "title": "...", "pages": [ ... ] }'></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="primary" @click="applyImport">Load</button>
+          <button class="secondary" @click="importOpen=false">Cancel</button>
+        </div>
+        <p v-if="importError" style="color:var(--err)">{{ importError }}</p>
+      </div>
     </div>
+
+    <!-- Template editor (integrated panel) -->
+    <section class="panel template-editor" v-if="editingTemplate" aria-label="Template editor">
+      <h2>Edit template <span class="badge" v-if="templateUsage(editingTemplate.id) > 0">{{ templateUsage(editingTemplate.id) }} page(s) use this</span></h2>
+
+      <div class="tpl-grid">
+        <div class="tpl-form">
+          <label for="tplName">Name</label>
+          <input id="tplName" type="text" v-model="editingTemplate.name" placeholder="Display name" />
+
+          <label for="tplId">ID <span class="hint">(stable reference — renaming migrates pages)</span></label>
+          <input id="tplId" type="text" v-model="editingTemplate.id" placeholder="my-template" />
+
+          <label for="tplStructure">Structure</label>
+          <textarea id="tplStructure" v-model="editingTemplate.structure" rows="9" spellcheck="false"
+            placeholder="&lt;h2&gt;TITLE&lt;/h2&gt;&lt;div&gt;CONTENT&lt;/div&gt;"></textarea>
+
+          <div class="token-bar" role="group" aria-label="Insert token">
+            <button type="button" class="secondary" @click="insertToken('title')" title="Escaped page title" v-text="tokenLabels.title"></button>
+            <button type="button" class="secondary" @click="insertToken('content')" title="Markdown-rendered body" v-text="tokenLabels.content"></button>
+            <button type="button" class="secondary" @click="insertRawToken('rawField')" title="Injected verbatim from extraData" v-text="tokenLabels.raw"></button>
+          </div>
+          <p class="hint" v-text="tokenHint"></p>
+
+          <label>Detected fields <span class="hint">(extraData keys this template expects)</span></label>
+          <div v-if="detectedFields.length">
+            <div v-for="field in detectedFields" :key="field" style="margin-bottom:8px">
+              <div class="row" style="align-items:center">
+                <code class="inline" style="min-width:110px">{{ field }}</code>
+                <input type="text" v-model="editingTemplate.extraData[field]" :placeholder="'Default value for ' + field" style="flex:1" />
+              </div>
+            </div>
+          </div>
+          <p class="hint" v-else>No extra fields — this template only uses title and content.</p>
+
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+            <button class="primary" @click="saveTemplate">💾 Save template</button>
+            <button class="danger" @click="deleteTemplate" :disabled="isDefaultTemplate">🗑 Delete</button>
+            <button class="secondary" @click="closeTemplateEditor">Cancel</button>
+          </div>
+          <p v-if="templateError" style="color:var(--err)">{{ templateError }}</p>
+        </div>
+
+        <div class="tpl-preview">
+          <h3>Live preview <span class="badge">against selected page</span></h3>
+          <div class="preview" v-html="templatePreviewHtml"></div>
+          <p class="hint" style="margin-top:10px">Preview renders the selected page through this structure. Unknown tokens fall back to empty strings; raw tokens are injected unescaped (sanitized afterwards).</p>
+        </div>
+      </div>
+    </section>
+
   </div>
 
   <script>
-    const md = markdownit();
+    (function () {
+      'use strict';
+      var core = window.SiteCore;
+      var DRAFT_KEY = 'site-draft-v1';
+      function escapeHtml(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
 
-    const editorApp = Vue.createApp({
-      data() {
-        return {
-          pages: [{ title: "Welcome", content: "# Site under construction\nStay tuned for updates!", template: "default" }],
-          templates: [],
-          currentPage: null,
-          currentPageIndex: null
-        };
-      },
-      mounted() {
-        fetch('content.json')
-          .then(response => response.json())
-          .then(data => {
-            this.pages = data.pages;
-            this.templates = data.templates;
-            if (this.pages.length) {
-              this.currentPage = this.pages[0];
-              this.currentPageIndex = 0;
-            }
-          });
-      },
-      methods: {
-        selectPage(page, index) {
-          this.currentPage = page;
-          this.currentPageIndex = index;
-        },
-        addPage() {
-          const newPage = { title: "New Page", content: "", template: "default" };
-          this.pages.push(newPage);
-          this.currentPageIndex = this.pages.length - 1;
-          this.currentPage = newPage;
-        },
-        removePage(index) {
-          this.pages.splice(index, 1);
-          if (this.pages.length) {
-            this.currentPageIndex = 0;
-            this.currentPage = this.pages[0];
-          } else {
-            this.currentPage = null;
-            this.currentPageIndex = null;
-          }
-        },
-        templateChange(event) {
-          const selectedTemplateId = event.target.value;
-          if(selectedTemplateId === 'default'){
-            delete this.currentPage.extraData;
-            return;
-          }
-          for(let template of this.templates) {
-            if(template.id === selectedTemplateId) {
-              // Use a deep clone so we don't accidentally bind to the template’s default extraData
-              this.currentPage.extraData = JSON.parse(JSON.stringify(template.extraData || {}));
-              break;
-            }
-          }
-        },
-        downloadJSON() {
-          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ pages: this.pages, templates: this.templates }, null, 2));
-          const dlAnchorElem = document.createElement('a');
-          dlAnchorElem.setAttribute("href", dataStr);
-          dlAnchorElem.setAttribute("download", "content.json");
-          dlAnchorElem.click();
-        },
-        applyTemplate(page) {
-          let template = this.templates.find(t => t.id === page.template) ||
-                         { structure: "<h2>{{title}}</h2><div>{{content}}</div>" };
+      var mdLib = typeof window.markdownit === 'function' ? window.markdownit({ linkify: true, html: false }) : null;
+      var renderMd = core ? core.makeMarkdownRenderer(mdLib) : function (t) { return '<p>' + String(t || '') + '</p>'; };
 
-          return template.structure
-            .replace(/{{{(.*?)}}}/g, (match, token) => {
-              return page.extraData && page.extraData[token] ? page.extraData[token] : '';
-            })
-            .replace(/{{(.*?)}}/g, (match, token) => {
-              token = token.trim();
-              if (token === 'content') {
-                return md.render(page.content);
-              } else if (token === 'title') {
-                return page.title;
-              } else {
-                return page.extraData && page.extraData[token] ? md.render(page.extraData[token]) : '';
-              }
-            });
+      /* Page icons — same set as the display page. The icon is set in content.json. */
+      var ICONS = {
+        sparkles: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.4L19.5 10l-5.6 1.6L12 17l-1.9-5.4L4.5 10l5.6-1.6z"/><path d="M18.5 15.5l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>',
+        cpu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 2.5v2M15 2.5v2M9 19.5v2M15 19.5v2M2.5 9h2M2.5 15h2M19.5 9h2M19.5 15h2"/></svg>',
+        openai: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5c-4.7 0-8.5 3.8-8.5 8.5M12 20.5c4.7 0 8.5-3.8 8.5-8.5M3.5 12h17M12 3.5v17" opacity=".55"/><circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/></svg>',
+        copilot: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6L20.5 11l-5.9 2.4L12 19l-2.6-5.6L3.5 11l5.9-2.4z"/><path d="M19 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>',
+        grok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5c5 2.5 7.5 7 6 12.5-1.2 3.6-4.4 6-8 6-4.4 0-7.4-3.4-7-8.2C3.6 6.2 7.5 3.2 12 2.5z"/><path d="M12 7.5l1.6 3.6 3.9.9-3.3 2.2.9 3.8-3.1-2-3.1 2 .9-3.8-3.3-2.2 3.9-.9z"/></svg>',
+        info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 10.5V17"/><circle cx="12" cy="7.2" r="1.15" fill="currentColor" stroke="none"/></svg>',
+        default: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.5v7M8.5 12h7"/></svg>'
+      };
+      function iconFor(name) {
+        var key = String(name || '').trim().toLowerCase();
+        return ICONS[key] || ICONS.default;
+      }
+
+      /* Drop a leading title element from rendered HTML — the preview header already shows the title. */
+      function stripLeadingTitle(html) {
+        try {
+          var doc = new DOMParser().parseFromString('<div id="__strip">' + String(html == null ? '' : html) + '</div>', 'text/html');
+          var root = doc.getElementById('__strip');
+          if (!root) return html;
+          var first = root.firstElementChild;
+          if (first && /^H[1-4]$/.test(first.tagName)) first.remove();
+          return root.innerHTML;
+        } catch (e) {
+          return html;
         }
       }
-    });
 
-    editorApp.mount('#editor');
+      var app = Vue.createApp({
+        data: function () {
+          return {
+            data: { title: '', pages: [], templates: [] },
+            originalJson: '',
+            selectedIndex: 0,
+            query: '',
+            theme: 'auto',
+            fatal: '',
+            purifyOk: !!(window.DOMPurify && window.DOMPurify.sanitize),
+            showJson: false,
+            importOpen: false,
+            importText: '',
+            importError: '',
+            copied: false,
+            editingTemplate: null,
+            templateError: '',
+            lastSavedAt: '',
+            iconOptions: ['sparkles', 'cpu', 'openai', 'copilot', 'grok', 'info']
+          };
+        },
+        computed: {
+          pages: function () { return this.data.pages || []; },
+          templates: function () { return this.data.templates || []; },
+          currentPage: function () {
+            var i = this.selectedIndex;
+            return (i >= 0 && i < this.pages.length) ? this.pages[i] : null;
+          },
+          extraFields: function () {
+            if (!this.currentPage || !core) return [];
+            var tpl = core.findTemplate(this.templates, this.currentPage.template);
+            return core.requiredExtraFields(tpl);
+          },
+          detectedFields: function () {
+            if (!this.editingTemplate || !core) return [];
+            return core.templateTokens(this.editingTemplate.structure)
+              .filter(function (t) { return t !== 'title' && t !== 'content'; });
+          },
+          isDefaultTemplate: function () {
+            return !!(this.editingTemplate && String(this.editingTemplate.id) === (core ? core.DEFAULT_TEMPLATE_ID : 'default'));
+          },
+          templatePreviewHtml: function () {
+            if (!this.editingTemplate || !core) return '';
+            var page = this.currentPage;
+            if (!page) return '<p class="hint">Select a page to preview this template against.</p>';
+            // render the selected page through the in-progress structure
+            var draft = JSON.parse(JSON.stringify(page));
+            draft.template = String(this.editingTemplate.id || 'draft');
+            var draftTemplates = this.templates.map(function (t) {
+              return String(t.id) === String(this.editingTemplate.id)
+                ? JSON.parse(JSON.stringify(this.editingTemplate))
+                : t;
+            }.bind(this));
+            if (!draftTemplates.some(function (t) { return String(t.id) === String(draft.template); })) {
+              draftTemplates.push(JSON.parse(JSON.stringify(this.editingTemplate)));
+            }
+            var html = core.renderTemplate(draft, draftTemplates, { renderMarkdown: renderMd });
+            var s = core.sanitizeHtml(stripLeadingTitle(html));
+            return '<div class="preview-head"><span class="preview-icon" aria-hidden="true">' + iconFor(page.icon) + '</span><span class="preview-title">' + escapeHtml(page.title || 'Untitled') + '</span></div>' + s.html;
+          },
+          issues: function () { return core ? core.validateData(this.data) : []; },
+          errors: function () { return this.issues.filter(function (i) { return i.level === 'error'; }); },
+          warnings: function () { return this.issues.filter(function (i) { return i.level === 'warn'; }); },
+          idIssues: function () {
+            if (!this.currentPage || !core) return [];
+            var me = String(this.currentPage.id);
+            var out = [];
+            if (!me.trim()) out.push('id is empty');
+            var dupes = this.pages.filter(function (p) { return String(p.id) === me; }).length;
+            if (dupes > 1) out.push('duplicate id "' + me + '"');
+            return out;
+          },
+          wordCount: function () {
+            return this.currentPage && core ? core.countWords(this.currentPage.content) : 0;
+          },
+          tokenHint: function () {
+            var lb = String.fromCharCode(123), rb = String.fromCharCode(125);
+            var t = lb + lb, e = rb + rb;
+            return 'Tokens: ' + t + 'title' + e + ', ' + t + 'content' + e + ', ' + t + 'anyField' + e
+                 + '; raw (unescaped): ' + lb + t + 'rawField' + e + rb;
+          },
+          tokenLabels: function () {
+            var lb = String.fromCharCode(123), rb = String.fromCharCode(125);
+            var t = lb + lb, e = rb + rb;
+            return { title: t + 'title' + e, content: t + 'content' + e, raw: lb + t + 'rawField' + e + rb };
+          },
+          renderedPreview: function () {
+            if (!this.currentPage) return '';
+            var p = this.currentPage;
+            var html = core
+              ? core.renderTemplate(p, this.templates, { renderMarkdown: renderMd })
+              : '<pre>' + String(p.content || '') + '</pre>';
+            if (core) {
+              var s = core.sanitizeHtml(stripLeadingTitle(html));
+              // defer flag sync outside the computed to avoid a reactive write-during-read cycle
+              if (s.available !== this.purifyOk) {
+                var ok = s.available;
+                Promise.resolve().then(function () { if (appVm) appVm.purifyOk = ok; });
+              }
+              return '<div class="preview-head"><span class="preview-icon" aria-hidden="true">' + iconFor(p.icon) + '</span><span class="preview-title">' + escapeHtml(p.title || 'Untitled') + '</span></div>' + s.html;
+            }
+            return html;
+          },
+          prettyJson: function () { return JSON.stringify(this.data, null, 2); },
+          jsonSizeKb: function () { return (this.prettyJson.length / 1024).toFixed(1); },
+          dirty: function () { return this.prettyJson !== this.originalJson; }
+        },
+        watch: {
+          data: { deep: true, handler: function () { this.saveDraft(); } }
+        },
+        methods: {
+          viewSite: function () { location.assign('index.html'); },
+          boot: function (raw, sourceLabel) {
+            this.data = core ? core.normalizeData(raw) : raw;
+            this.originalJson = JSON.stringify(this.data, null, 2);
+            this.selectedIndex = 0;
+            document.title = 'Editing — ' + this.data.title;
+            if (sourceLabel) this.lastSavedAt = sourceLabel;
+          },
+          selectPage: function (index) {
+            if (index >= 0 && index < this.pages.length) this.selectedIndex = index;
+          },
+          addPage: function () {
+            if (!core) return;
+            var taken = this.pages.map(function (p) { return String(p.id); });
+            var page = core.createPage(this.templates, taken);
+            this.data.pages.push(page);
+            this.selectedIndex = this.data.pages.length - 1;
+          },
+          removeSelected: function () {
+            var p = this.currentPage;
+            if (!p) return;
+            if (!window.confirm('Delete page "' + (p.title || p.id) + '"?')) return;
+            this.data.pages.splice(this.selectedIndex, 1);
+            this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, this.data.pages.length - 1));
+          },
+          moveSelected: function (delta) {
+            if (!core) return;
+            var target = this.selectedIndex + delta;
+            if (target < 0 || target >= this.pages.length) return;
+            this.data.pages = core.moveItem(this.data.pages, this.selectedIndex, target);
+            this.selectedIndex = target;
+          },
+          onIdChange: function () {
+            // trim whitespace users paste accidentally
+            if (this.currentPage) this.currentPage.id = String(this.currentPage.id).trim();
+          },
+          regenerateId: function () {
+            if (!this.currentPage || !core) return;
+            var taken = this.pages.filter(function (_, i) { return i !== this.selectedIndex; }.bind(this))
+              .map(function (p) { return String(p.id); });
+            this.currentPage.id = core.uniqueId(core.slugify(this.currentPage.title || 'page'), taken);
+          },
+          onTemplateChange: function () {
+            if (!this.currentPage || !core) return;
+            var tpl = core.findTemplate(this.templates, this.currentPage.template);
+            var synced = core.syncExtraData(this.currentPage, tpl);
+            if ('extraData' in synced) this.currentPage.extraData = synced.extraData;
+            else delete this.currentPage.extraData;
+          },
+          unknownTemplate: function (page) {
+            if (!page || !core) return false;
+            return !core.findTemplate(this.templates, page.template);
+          },
+          fixTemplate: function () {
+            if (!this.currentPage) return;
+            this.currentPage.template = core ? core.DEFAULT_TEMPLATE_ID : 'default';
+            this.onTemplateChange();
+          },
+          editTemplate: function (t) {
+            this._originalTemplateId = String(t.id);
+            var clone = core ? core.deepClone(t) : JSON.parse(JSON.stringify(t));
+            // ensure extraData exists so the form can bind to it
+            if (!clone.extraData || typeof clone.extraData !== 'object') clone.extraData = {};
+            this.editingTemplate = clone;
+            this.templateError = '';
+          },
+          templateUsage: function (id) {
+            if (!id) return 0;
+            var target = String(id);
+            return this.pages.filter(function (p) { return String(p.template) === target; }).length;
+          },
+          closeTemplateEditor: function () {
+            this.editingTemplate = null;
+            this.templateError = '';
+          },
+          insertToken: function (token) {
+            if (!this.editingTemplate) return;
+            var el = document.getElementById('tplStructure');
+            var tokenText = '{{' + token + '}}';
+            this._insertInto(el, tokenText);
+          },
+          insertRawToken: function (token) {
+            if (!this.editingTemplate) return;
+            var el = document.getElementById('tplStructure');
+            var tokenText = '{{{' + token + '}}}';
+            this._insertInto(el, tokenText);
+          },
+          _insertInto: function (el, text) {
+            if (!el) { this.editingTemplate.structure += text; return; }
+            var start = el.selectionStart == null ? el.value.length : el.selectionStart;
+            var end = el.selectionEnd == null ? el.value.length : el.selectionEnd;
+            var before = el.value.slice(0, start);
+            var after = el.value.slice(end);
+            this.editingTemplate.structure = before + text + after;
+            // restore focus + cursor after Vue re-renders the textarea
+            this.$nextTick(function () {
+              var ta = document.getElementById('tplStructure');
+              if (ta) { ta.focus(); ta.setSelectionRange(start + text.length, start + text.length); }
+            });
+          },
+          saveTemplate: function () {
+            var et = this.editingTemplate;
+            if (!et) return;
+            if (!String(et.id || '').trim()) { this.templateError = 'Template id is required.'; return; }
+            if (!String(et.structure || '').trim()) { this.templateError = 'Structure cannot be empty.'; return; }
+            var idx = -1;
+            if (this._originalTemplateId !== undefined) {
+              for (var j = 0; j < this.templates.length; j++) {
+                if (String(this.templates[j].id) === String(this._originalTemplateId)) { idx = j; break; }
+              }
+            }
+            var duplicate = this.templates.some(function (t, i) {
+              return String(t.id) === String(et.id) && i !== idx;
+            });
+            if (duplicate) { this.templateError = 'Another template already uses id "' + et.id + '".'; return; }
+
+            var clean = { id: String(et.id).trim(), name: String(et.name || et.id).trim(), structure: et.structure };
+            var fields = core ? core.templateTokens(et.structure).filter(function (x) { return x !== 'title' && x !== 'content'; }) : [];
+            if (fields.length) {
+              clean.extraData = {};
+              fields.forEach(function (k) {
+                clean.extraData[k] = (et.extraData && et.extraData[k] != null) ? String(et.extraData[k]) : '';
+              });
+            }
+            if (idx >= 0) {
+              // migrate pages using the old id
+              var oldId = String(this._originalTemplateId);
+              this.data.pages.forEach(function (p) { if (String(p.template) === oldId) p.template = clean.id; });
+              this.templates.splice(idx, 1, clean);
+            } else {
+              this.templates.push(clean);
+            }
+            this.editingTemplate = null;
+            this.templateError = '';
+          },
+          deleteTemplate: function () {
+            var et = this.editingTemplate;
+            if (!et) return;
+            var id = String(this._originalTemplateId !== undefined ? this._originalTemplateId : et.id);
+            var usedBy = this.pages.filter(function (p) { return String(p.template) === id; }).length;
+            if (id === (core ? core.DEFAULT_TEMPLATE_ID : 'default')) {
+              this.templateError = 'The default template cannot be deleted.'; return;
+            }
+            if (usedBy && !window.confirm(usedBy + ' page(s) use this template and will fall back to default. Continue?')) return;
+            for (var i = 0; i < this.templates.length; i++) {
+              if (String(this.templates[i].id) === id) { this.templates.splice(i, 1); break; }
+            }
+            this.editingTemplate = null;
+            this.templateError = '';
+          },
+          addTemplate: function () {
+            var taken = this.templates.map(function (t) { return String(t.id); });
+            var id = core ? core.uniqueId('custom-template', taken) : 'custom-template';
+            this._originalTemplateId = undefined; // new template, no migration needed
+            this.editingTemplate = { id: id, name: 'Custom template', structure: '<h2>{{title}}</h2>\n<div>{{content}}</div>', extraData: {} };
+            this.templateError = '';
+          },
+          saveDraft: function () {
+            var self = this;
+            try {
+              clearTimeout(this._draftTimer);
+              this._draftTimer = setTimeout(function () {
+                var stamp = new Date().toLocaleString();
+                localStorage.setItem(DRAFT_KEY, JSON.stringify(self.data));
+                localStorage.setItem(DRAFT_KEY + '-at', stamp);
+                self.lastSavedAt = stamp;
+              }, 400);
+            } catch (e) {}
+          },
+          restoreDraft: function () {
+            var raw = null;
+            try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return false; }
+            if (!raw) return false;
+            try {
+              var parsed = JSON.parse(raw);
+              var storedAt = '';
+              try { storedAt = localStorage.getItem(DRAFT_KEY + '-at') || 'restored draft'; } catch (e) {}
+              var useDraft = window.confirm('Found an unsaved draft from ' + (storedAt || 'earlier') + '.\n\nOK = continue editing the draft\nCancel = discard it and load content.json');
+              if (!useDraft) { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} return false; }
+              this.boot(parsed, 'draft restored');
+              return true;
+            } catch (e) { return false; }
+          },
+          downloadJSON: function () {
+            if (this.errors.length) {
+              if (!window.confirm('There are ' + this.errors.length + ' validation error(s). Download anyway?')) return;
+            }
+            var blob = new Blob([JSON.stringify(this.data, null, 2) + '\n'], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url; a.download = 'content.json';
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+            this.originalJson = this.prettyJson; // mark as saved
+          },
+          copyJson: function () {
+            var self = this;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(this.prettyJson).then(function () {
+                self.copied = true;
+                setTimeout(function () { self.copied = false; }, 1500);
+              });
+            }
+          },
+          onFilePicked: function (ev) {
+            var f = ev.target.files && ev.target.files[0];
+            if (!f) return;
+            var self = this;
+            var reader = new FileReader();
+            reader.onload = function () {
+              try { self.importText = String(reader.result); self.importError = ''; }
+              catch (e) { self.importError = 'Could not read file.'; }
+            };
+            reader.onerror = function () { self.importError = 'Could not read file.'; };
+            reader.readAsText(f);
+          },
+          applyImport: function () {
+            try {
+              var parsed = JSON.parse(this.importText);
+              this.boot(parsed, 'imported');
+              this.importOpen = false; this.importError = '';
+            } catch (e) { this.importError = 'Invalid JSON: ' + e.message; }
+          },
+          applyTheme: function () {
+            var resolved = this.theme;
+            if (resolved === 'auto') {
+              resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-theme', resolved);
+          }
+        },
+        mounted: function () {
+          var self = this;
+          this.applyTheme();
+          if (this.restoreDraft()) return;
+          fetch('content.json', { cache: 'no-store' })
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function (d) { self.boot(d); })
+            .catch(function (err) {
+              self.fatal = 'Could not load content.json (' + err.message + '). Serve over HTTP (python3 -m http.server) or use 📥 Import. You can still start a new document: ';
+              self.data = core ? core.normalizeData({}) : { title: 'New site', pages: [], templates: [] };
+              self.originalJson = JSON.stringify(self.data, null, 2);
+            });
+          window.addEventListener('beforeunload', function (e) {
+            if (self.dirty) { e.preventDefault(); e.returnValue = ''; }
+          });
+        }
+      });
+      var appVm = app.mount('#editor');
+    })();
   </script>
 </body>
 </html>
