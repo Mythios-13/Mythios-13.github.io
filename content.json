@@ -45,42 +45,42 @@
   ],
   "pages": [
     {
-      "id": 1,
+      "id": "1",
       "template": "default",
       "title": "Welcome",
       "icon": "sparkles",
       "content": "A small index of AI-generated experiments — each one a self-contained HTML page built iteratively with an AI assistant.\n\nThis site is the record. The content lives in a single `content.json` file with embedded page templates and markdown; this page renders it as a lab notebook. Enjoy."
     },
     {
-      "id": 2,
+      "id": "2",
       "template": "default",
       "title": "Local AI Experiments",
       "icon": "cpu",
-      "content": "All experiments run locally with AI tooling — no backend, no build step, just HTML files you can open in a browser.\n\n[AI Shooter](https://Mythios-13.github.io/LocalTests/Shooter/outrun-shooter.html)\n\n[City Walker GTA-like](https://Mythios-13.github.io/LocalTests/Walker/procedural-city-walker.html)\n\n[WhisperWood, relaxing exploration](https://Mythios-13.github.io/LocalTests/whisperwood/forest.html)\n\n[SketchBoard, just draw something](https://Mythios-13.github.io/LocalTests/SketchBoard/index.html)"
+      "content": "All experiments run locally with AI tooling — no backend, no build step, just HTML files you can open in a browser.\n\n### Apps\n[SketchBoard, just draw something](https://Mythios-13.github.io/LocalTests/SketchBoard/index.html)\n\n### Games\n\n[AI Shooter](https://Mythios-13.github.io/LocalTests/Shooter/outrun-shooter.html)\n\n[Doom like Game](https://Mythios-13.github.io/LocalTests/DoomLike/doom-like.html)\n\n[City Walker GTA-like](https://Mythios-13.github.io/LocalTests/Walker/procedural-city-walker.html)\n\n[WhisperWood, relaxing exploration](https://Mythios-13.github.io/LocalTests/whisperwood/forest.html)\n\n"
     },
     {
-      "id": 3,
+      "id": "3",
       "template": "default",
       "title": "AI Experiments OpenAi",
       "icon": "openai",
       "content": "Generated iteratively with the OpenAI free plan (reasoning enabled).\n\n[Autoplayed Snake](https://Mythios-13.github.io/snake/snake.html)\n\n[Vector Game](https://Mythios-13.github.io/vectorgame/vector.html)\n\n[Mario like with editor](https://Mythios-13.github.io/mariolike/leveleditor.html)\n\n[WebXR Minecraft Like](https://Mythios-13.github.io/webXr/index.html)\n\n[Binaural audio](https://Mythios-13.github.io/Binaural/index.html)\n\n[Binaural audio V2 : Mobile friendly](https://Mythios-13.github.io/Binaural/indexV2.html)"
     },
     {
-      "id": 4,
+      "id": "4",
       "template": "default",
       "title": "AI Experiments Copilot",
       "icon": "copilot",
       "content": "Generated iteratively with Copilot free in VS Code.\n\nNo experiments published yet — this page is the placeholder for that batch."
     },
     {
-      "id": 5,
+      "id": "5",
       "template": "default",
       "title": "Grok AI experiments",
       "icon": "grok",
       "content": "Generated iteratively with Grok AI (Super Grok plan).\n\n[Aurora Prompt Master](https://Mythios-13.github.io/GrokPromptGenerator/auroraLabV1.html)\n\n[Last Frame Saver](https://Mythios-13.github.io/LastFrameSaved/index.html)\n\n[Aurora Prompt MasterV3](https://Mythios-13.github.io/GrokPromptGenerator/auroraLabV3_5.html)"
     },
     {
-      "id": 6,
+      "id": "6",
       "template": "default",
       "title": "About",
       "icon": "info",
