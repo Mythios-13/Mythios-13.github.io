@@ -885,6 +885,88 @@ var GEN = (function () {
     return { base: base, ink: ink };
   }
 
+  function genLines(o) {
+    var w = o.w, h = o.h, rng = o.rng, palette = o.palette, params = o.params;
+    var base = o.alpha ? makeBuffer(w, h) : baseGradient(w, h, palette, params.baseDarkness, rng);
+    var ink = makeBuffer(w, h);
+    var count = Math.round(params.flows * 0.55);
+    var angle = rng() * Math.PI; // whole-canvas orientation
+    var ca = Math.cos(angle), sa = Math.sin(angle);
+    var minDim = Math.min(w, h);
+    for (var i = 0; i < count; i++) {
+      var t = rng();
+      var pos = (t - 0.5) * (Math.max(w, h) * 1.6);
+      var col = palette[Math.floor(rng() * palette.length)];
+      var alpha = 0.35 + rng() * 0.45;
+      var width = params.strokeWidth * (0.4 + rng() * 2.6);
+      var jitter = rng() < 0.35; // some lines get a gentle wobble
+      var wobAmp = jitter ? minDim * (0.02 + rng() * 0.07) : 0;
+      var wobFreq = 1.5 + rng() * 4;
+      var wobPhase = rng() * Math.PI * 2;
+      var len = Math.max(w, h) * 1.8;
+      var steps = Math.max(24, Math.ceil(len / 14));
+      var px = null, py = null;
+      for (var s = 0; s <= steps; s++) {
+        var d = (s / steps - 0.5) * len;
+        var off = pos + (jitter ? Math.sin(d * 0.004 * wobFreq + wobPhase) * wobAmp : 0);
+        var x = w / 2 + ca * d - sa * off;
+        var y = h / 2 + sa * d + ca * off;
+        if (px !== null) stampSegment(ink, px, py, x, y, width * 0.5, col, alpha);
+        px = x; py = y;
+      }
+    }
+    return { base: base, ink: ink };
+  }
+
+  function genRain(o) {
+    var w = o.w, h = o.h, rng = o.rng, palette = o.palette, params = o.params;
+    var base = o.alpha ? makeBuffer(w, h) : baseGradient(w, h, palette, params.baseDarkness, rng);
+    var ink = makeBuffer(w, h);
+    var cols = Math.max(16, Math.round(w / 18));
+    var cellW = w / cols;
+    var seedOff = Math.floor(rng() * 100000);
+    var speed = 0.55 + rng() * 0.9;
+    var tailLen = 0.30 + rng() * 0.45; // fraction of canvas height per trail
+    for (var c = 0; c < cols; c++) {
+      var cx = (c + 0.5) * cellW + (rng() - 0.5) * cellW * 0.7;
+      var phase = rng() * Math.PI * 2;
+      var drift = (rng() - 0.5) * 0.35;
+      var col = palette[Math.floor(rng() * palette.length)];
+      var bright = 0.55 + rng() * 0.45;
+      var trail = h * tailLen * (0.75 + rng() * 0.9);
+      var headY = rng() * h;
+      var width = params.strokeWidth * (0.9 + rng() * 2.2);
+      var steps = Math.max(16, Math.ceil(trail / 6));
+      var px = null, py = null;
+      for (var s = 0; s <= steps; s++) {
+        var t = s / steps;
+        var y = headY + t * trail;
+        var x = cx + Math.sin(phase + t * 3.2) * cellW * 0.28 + drift * t * cellW;
+        var alpha = (1 - t) * bright * 0.85;
+        if (y >= -20 && y <= h + 20) {
+          if (px !== null) stampSegment(ink, px, py, x, y, width * (1 - t * 0.55) * 0.5, col, alpha);
+          px = x; py = y;
+        }
+      }
+      // glowing head dot
+      var hy = headY;
+      var hx = cx + Math.sin(phase) * cellW * 0.28;
+      if (hy >= -20 && hy <= h + 20) {
+        stampCircle(ink, hx, hy, width * 1.15, [255, 255, 255], 0.75 * bright);
+      }
+    }
+    // faint falling dust particles
+    var dust = Math.floor((w * h) / 9000);
+    for (var d = 0; d < dust; d++) {
+      var dx = rng() * w, dy = rng() * h;
+      var dr = 0.5 + rng() * 1.4;
+      var da = 0.25 + rng() * 0.5;
+      var dc = palette[Math.floor(rng() * palette.length)];
+      stampCircle(ink, dx, dy, dr, dc, da);
+    }
+    return { base: base, ink: ink };
+  }
+
   /* ---------------- Compositing ---------------- */
   function compositeScreen(dst, src, strength) {
     var d = dst.data, s = src.data;
@@ -963,10 +1045,11 @@ var GEN = (function () {
       }
     }
   }
-  function applyScanlines(buf, strength) {
+  function applyScanlines(buf, strength, period) {
     if (strength <= 0) return;
+    period = Math.max(2, Math.round(period || 3));
+    var thick = Math.max(1, Math.round(period * 0.34));
     var w = buf.w, h = buf.h, data = buf.data;
-    var period = 3, thick = 1;
     for (var y = 0; y < h; y++) {
       if (y % period < thick) {
         var f = 1 - strength * 0.55;
@@ -1015,6 +1098,8 @@ var GEN = (function () {
       shine: opts.shine != null ? opts.shine : 0.35,
       grain: opts.grain != null ? opts.grain : 0.14,
       scanlines: opts.scanlines != null ? opts.scanlines : 0,
+      scanlineGap: opts.scanlineGap != null ? opts.scanlineGap : 3,
+      blur: opts.blur != null ? opts.blur : 0,
       chroma: opts.chroma != null ? opts.chroma : 0,
       vignette: opts.vignette != null ? opts.vignette : 0.35,
       baseDarkness: opts.baseDarkness != null ? opts.baseDarkness : 0.5,
@@ -1025,22 +1110,33 @@ var GEN = (function () {
     if (style === 'waves') result = genWaves({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
     else if (style === 'rings') result = genRings({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
     else if (style === 'nebula') result = genNebula({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
+    else if (style === 'lines') result = genLines({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
+    else if (style === 'rain') result = genRain({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
     else result = genFlow({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
 
     var base = result.base, ink = result.ink;
+    var blurAmt = params.blur || 0;
+    if (blurAmt > 0) {
+      if (style === 'waves') boxBlur(base, blurAmt);
+      else boxBlur(ink, blurAmt);
+    }
     var glowAmt = params.glow;
     if (glowAmt > 0 && style !== 'waves') {
-      var glowBuf = makeBuffer(w, h);
-      glowBuf.data.set(ink.data);
-      boxBlur(glowBuf, glowAmt);
-      compositeScreen(base, glowBuf, 0.85);
+      var glowWide = makeBuffer(w, h);
+      glowWide.data.set(ink.data);
+      boxBlur(glowWide, Math.round(glowAmt * 1.8));
+      compositeScreen(base, glowWide, 0.45);
+      var glowTight = makeBuffer(w, h);
+      glowTight.data.set(ink.data);
+      boxBlur(glowTight, Math.max(1, Math.round(glowAmt * 0.55)));
+      compositeScreen(base, glowTight, 0.95);
     }
     if (style !== 'waves') compositeOver(base, ink, 0.92);
 
     applyShine(base, params.shine);
     applyChroma(base, params.chroma);
     applyGrain(base, params.grain, makeRng(seed + '::grain'));
-    applyScanlines(base, params.scanlines);
+    applyScanlines(base, params.scanlines, params.scanlineGap);
     applyVignette(base, params.vignette);
 
     return { width: w, height: h, data: base.data };
@@ -1103,7 +1199,7 @@ var GEN = (function () {
     alpha: false,
     params: {
       flows: 110, frequency: 3.0, traceLength: 140, strokeWidth: 2.4,
-      glow: 14, shine: 0.35, grain: 0.14, scanlines: 0, chroma: 2,
+      glow: 14, shine: 0.35, grain: 0.14, scanlines: 0, scanlineGap: 3, blur: 0, chroma: 2,
       vignette: 0.35, baseDarkness: 0.5
     }
   };
@@ -1171,6 +1267,8 @@ var GEN = (function () {
       shine: state.params.shine,
       grain: state.params.grain,
       scanlines: state.params.scanlines,
+      scanlineGap: state.params.scanlineGap,
+      blur: state.params.blur,
       chroma: state.params.chroma,
       vignette: state.params.vignette,
       baseDarkness: state.params.baseDarkness
@@ -1260,7 +1358,9 @@ var GEN = (function () {
       { id: 'flow', name: 'Flow Field', icon: '<path d="M3 18c4-10 7 4 11-6 2-4 5-4 7-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
       { id: 'waves', name: 'Wave Bands', icon: '<path d="M3 8c3-3 6 3 9 0s6 3 9 0M3 15c3-3 6 3 9 0s6 3 9 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
       { id: 'rings', name: 'Rings', icon: '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".65"/><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".4"/>' },
-      { id: 'nebula', name: 'Nebula', icon: '<circle cx="9" cy="9" r="4" fill="currentColor" opacity=".85"/><circle cx="17" cy="15" r="2.4" fill="currentColor" opacity=".55"/><circle cx="15" cy="6" r="1.3" fill="currentColor" opacity=".8"/>' }
+      { id: 'nebula', name: 'Nebula', icon: '<circle cx="9" cy="9" r="4" fill="currentColor" opacity=".85"/><circle cx="17" cy="15" r="2.4" fill="currentColor" opacity=".55"/><circle cx="15" cy="6" r="1.3" fill="currentColor" opacity=".8"/>' },
+      { id: 'lines', name: 'Lines', icon: '<path d="M3 7l18-3M3 13l18-3M3 19l18-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
+      { id: 'rain', name: 'Rain', icon: '<path d="M6 3v9M12 5v11M18 3v9M8 16v5M14 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' }
     ];
     els.styleCards.innerHTML = '';
     styles.forEach(function (s) {
@@ -1284,7 +1384,9 @@ var GEN = (function () {
     randBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Random palette';
     randBtn.addEventListener('click', function () {
       state.paletteMode = 'random';
-      applyRandomPalette();
+      // re-roll the palette each time: vary the rng seed with a counter
+      state._paletteRoll = (state._paletteRoll || 0) + 1;
+      applyRandomPalette(state._paletteRoll);
       buildPresets();
       buildPaletteColors();
       scheduleRender();
@@ -1316,8 +1418,8 @@ var GEN = (function () {
     });
   }
 
-  function applyRandomPalette() {
-    var rng = GEN.makeRng(state.seed + '::palette');
+  function applyRandomPalette(roll) {
+    var rng = GEN.makeRng(state.seed + '::palette' + '::' + (roll || 0));
     state.palette = GEN.randomPalette(state.colorCount, rng);
   }
 
@@ -1349,10 +1451,12 @@ var GEN = (function () {
     { key: 'frequency', label: 'Frequency', min: 0.5, max: 8, step: 0.1, fmt: v => v.toFixed(1), group: 'structure' },
     { key: 'traceLength', label: 'Trace length', min: 20, max: 400, step: 5, fmt: v => String(v), group: 'structure' },
     { key: 'strokeWidth', label: 'Stroke width', min: 0.5, max: 8, step: 0.1, fmt: v => v.toFixed(1), group: 'structure' },
-    { key: 'glow', label: 'Glow', min: 0, max: 40, step: 1, fmt: v => String(v), group: 'fx' },
+    { key: 'blur', label: 'Blur', min: 0, max: 20, step: 0.5, fmt: v => v.toFixed(1), group: 'fx' },
+    { key: 'glow', label: 'Glow', min: 0, max: 80, step: 1, fmt: v => String(v), group: 'fx' },
     { key: 'shine', label: 'Shine', min: 0, max: 0.9, step: 0.02, fmt: v => Math.round(v * 100) + '%', group: 'fx' },
     { key: 'grain', label: 'Grain', min: 0, max: 0.6, step: 0.01, fmt: v => Math.round(v * 100) + '%', group: 'fx' },
     { key: 'scanlines', label: 'CRT scanlines', min: 0, max: 1, step: 0.02, fmt: v => Math.round(v * 100) + '%', group: 'fx' },
+    { key: 'scanlineGap', label: 'Scanline spacing', min: 2, max: 10, step: 1, fmt: v => String(v), group: 'fx' },
     { key: 'chroma', label: 'Chromatic aberration', min: 0, max: 8, step: 0.5, fmt: v => v.toFixed(1), group: 'fx' },
     { key: 'vignette', label: 'Vignette', min: 0, max: 0.9, step: 0.02, fmt: v => Math.round(v * 100) + '%', group: 'fx' },
     { key: 'baseDarkness', label: 'Base darkness', min: 0, max: 1, step: 0.02, fmt: v => Math.round(v * 100) + '%', group: 'fx' }
@@ -1415,7 +1519,7 @@ var GEN = (function () {
 
   function randomizeSeed() {
     setSeed(randomSeedString(), 'Local PRNG');
-    if (state.paletteMode === 'random') { applyRandomPalette(); buildPaletteColors(); }
+    if (state.paletteMode === 'random') { applyRandomPalette(state._paletteRoll || 0); buildPaletteColors(); }
   }
 
   function fetchQuantumSeed() {
@@ -1437,7 +1541,7 @@ var GEN = (function () {
         var seed = 'q-' + hex.slice(0, 32);
         state.quantum = true;
         setSeed(seed, 'Quantum RNG · lfdr.de');
-        if (state.paletteMode === 'random') { applyRandomPalette(); buildPaletteColors(); }
+        if (state.paletteMode === 'random') { applyRandomPalette(state._paletteRoll || 0); buildPaletteColors(); }
         toast('Quantum entropy loaded — seed updated', 'ok');
       })
       .catch(function (err) {
@@ -1533,7 +1637,7 @@ var GEN = (function () {
       els.countVal.textContent = state.colorCount;
       els.countSlider.style.setProperty('--fill', ((state.colorCount - 2) / (8 - 2) * 100) + '%');
       if (state.paletteMode === 'random') {
-        applyRandomPalette();
+        applyRandomPalette(state._paletteRoll || 0);
         buildPaletteColors();
         scheduleRender();
       } else {
@@ -1551,7 +1655,7 @@ var GEN = (function () {
 
     els.seedInput.addEventListener('change', function () {
       setSeed(els.seedInput.value.trim() || randomSeedString(), 'Local PRNG');
-      if (state.paletteMode === 'random') { applyRandomPalette(); buildPaletteColors(); }
+      if (state.paletteMode === 'random') { applyRandomPalette(state._paletteRoll || 0); buildPaletteColors(); }
     });
     els.btnRandomSeed.addEventListener('click', randomizeSeed);
     els.btnQuantum.addEventListener('click', fetchQuantumSeed);
