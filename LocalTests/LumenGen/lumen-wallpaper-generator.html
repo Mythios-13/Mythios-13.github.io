@@ -65,6 +65,7 @@ h1 span{background:var(--grad);-webkit-background-clip:text;background-clip:text
 .btn-quantum:hover{box-shadow:0 14px 32px -8px rgba(34,211,238,.7);transform:translateY(-1px)}
 .btn[disabled]{opacity:.45;pointer-events:none}
 .btn svg{width:15px;height:15px;flex:none}
+a.btn{text-decoration:none;cursor:pointer}
 
 /* ---------- layout ---------- */
 main{position:relative;z-index:1;display:grid;grid-template-columns:352px 1fr;height:calc(100vh - 67px)}
@@ -304,6 +305,104 @@ input[type=range]:disabled{opacity:.35;cursor:not-allowed}
 .hint-row{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--dimmer);margin-top:8px}
 .hint-row svg{width:12px;height:12px;flex:none}
 
+/* custom style modal */
+#customModal{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:24px}
+#customModal.show{display:flex}
+#customModal .backdrop{position:absolute;inset:0;background:rgba(4,5,8,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.modal-card{
+  position:relative;width:min(920px,100%);max-height:88vh;display:flex;flex-direction:column;
+  background:linear-gradient(180deg,#14161f 0%,#10121a 100%);
+  border:1px solid rgba(255,255,255,.12);border-radius:18px;box-shadow:0 40px 120px -30px rgba(0,0,0,.9);
+  overflow:hidden;animation:modalIn .22s ease;
+}
+@keyframes modalIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+.modal-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--panel-border)}
+.modal-head h2{font-size:15px;font-weight:700;letter-spacing:.3px;flex:1}
+.modal-head h2 span{color:var(--dimmer);font-weight:500;font-size:11px;margin-left:8px}
+.modal-close{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:rgba(255,255,255,.06);border:1px solid var(--panel-border);transition:all .15s}
+.modal-close:hover{background:rgba(251,113,133,.18);border-color:rgba(251,113,133,.4)}
+.modal-close svg{width:15px;height:15px}
+.modal-body{display:grid;grid-template-columns:1fr 300px;gap:0;min-height:0;flex:1;overflow:hidden}
+.code-pane{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--panel-border)}
+.snippet-row{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--panel-border);align-items:center}
+.snippet-select{flex:1;min-width:0;padding:8px 10px;border-radius:9px;font-size:12px;background:rgba(0,0,0,.35);border:1px solid var(--panel-border);outline:none}
+.snippet-btn{padding:8px 12px;border-radius:9px;font-size:11.5px;font-weight:650;background:rgba(255,255,255,.06);border:1px solid var(--panel-border);transition:all .15s;white-space:nowrap}
+.snippet-btn:hover{background:rgba(255,255,255,.12)}
+.snippet-btn.danger{color:#fda4af;border-color:rgba(251,113,133,.35)}
+.snippet-btn.danger:hover{background:rgba(251,113,133,.14)}
+.code-wrap{flex:1;display:flex;flex-direction:column;min-height:0}
+#customCode{
+  flex:1;min-height:260px;resize:none;padding:16px 18px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:12.5px;line-height:1.65;color:#d7e0ee;background:transparent;border:none;outline:none;tab-size:2;
+}
+.code-status{padding:8px 18px;font-size:11px;border-top:1px solid var(--panel-border);min-height:32px;display:flex;align-items:center;gap:8px}
+.code-status.ok{color:#86efac}
+.code-status.err{color:#fda4af}
+.code-status.warn{color:#fcd34d}
+.help-pane{overflow-y:auto;padding:16px 18px;background:rgba(255,255,255,.02)}
+.help-pane h3{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:10px}
+.help-pane p{font-size:11.5px;line-height:1.6;color:#b6bcc9;margin-bottom:10px}
+.help-pane code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;background:rgba(139,92,246,.16);color:#d8ccff;padding:1px 5px;border-radius:5px}
+.help-pane ul{list-style:none;margin-bottom:10px}
+.help-pane li{font-size:11px;line-height:1.55;color:#b6bcc9;padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.07)}
+.help-pane li:last-child{border-bottom:none}
+.help-pane li b{color:#e8eaf0;font-weight:600}
+.modal-foot{display:flex;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid var(--panel-border);background:rgba(0,0,0,.25)}
+.modal-foot .spacer{flex:1}
+.warning-banner{
+  display:flex;align-items:center;gap:8px;padding:9px 20px;font-size:11px;line-height:1.5;
+  background:rgba(252,211,77,.08);border-bottom:1px solid rgba(252,211,77,.22);color:#fde68a;
+}
+.warning-banner svg{width:14px;height:14px;flex:none}
+.modal-actions{display:flex;gap:8px;align-items:center}
+@media (max-width:760px){
+  .modal-body{grid-template-columns:1fr;overflow-y:auto}
+  .code-pane{border-right:none;border-bottom:1px solid var(--panel-border)}
+  .help-pane{max-height:220px}
+  #customModal{padding:12px}
+}
+
+/* style card wrap + edit affordance */
+.style-wrap{position:relative;display:flex}
+.style-wrap .style-card{flex:1}
+.style-edit{
+  position:absolute;top:5px;right:5px;width:22px;height:22px;border-radius:6px;
+  display:grid;place-items:center;color:var(--dimmer);background:rgba(0,0,0,.35);
+  border:1px solid transparent;opacity:0;transition:all .15s;
+}
+.style-wrap:hover .style-edit,.style-wrap:focus-within .style-edit{opacity:1}
+.style-edit:hover{color:#fff;background:rgba(139,92,246,.4);border-color:rgba(139,92,246,.6)}
+.style-edit svg{width:11px;height:11px}
+@media (hover:none){.style-edit{opacity:.7}}
+
+/* read-only example mode */
+#customCode.readonly{color:#9aa3b5;background:rgba(0,0,0,.25);cursor:default}
+
+/* param text input next to slider value */
+.val-wrap{display:flex;align-items:center;gap:6px}
+.param-num{
+  width:64px;padding:2px 5px;font-size:11px;font-weight:700;text-align:right;
+  font-family:ui-monospace,Menlo,monospace;color:#e8e9ee;background:rgba(0,0,0,.35);
+  border:1px solid rgba(255,255,255,.14);border-radius:6px;outline:none;transition:border-color .15s;
+}
+.param-num:focus{border-color:var(--accent,#8b5cf6)}
+.param-num::-webkit-outer-spin-button,.param-num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.param-num{-moz-appearance:textfield;appearance:textfield}
+input[type=range].out-of-range{opacity:.55}
+
+.hint{margin:8px 2px 0;font-size:11px;color:var(--dimmer,#8a8f9c);line-height:1.5}
+
+/* saved custom-code card (next to Custom) */
+.saved-wrap{flex-direction:column;align-items:stretch;gap:6px;background:transparent;border:none;box-shadow:none;cursor:default;min-height:0}
+.saved-wrap .style-card{width:100%}
+.saved-select{
+  width:100%;padding:7px 8px;font-size:11.5px;font-weight:600;color:#e8e9ee;
+  background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.14);border-radius:8px;outline:none;cursor:pointer;
+}
+.saved-select:focus{border-color:var(--accent,#8b5cf6)}
+.saved-select:disabled{opacity:.55;cursor:default}
+.saved-select option{background:#161824;color:#e8e9ee}
+
 </style>
 </head>
 <body>
@@ -489,6 +588,86 @@ input[type=range]:disabled{opacity:.35;cursor:not-allowed}
   </section>
 </main>
 
+<div id="customModal" role="dialog" aria-modal="true" aria-labelledby="customModalTitle">
+  <div class="backdrop" id="customBackdrop"></div>
+  <div class="modal-card">
+    <div class="warning-banner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.4 0z"/></svg>
+      <span>Custom code runs locally in this page with full access to it. If it hangs or crashes, refresh the page to recover. Don't paste code from untrusted sources.</span>
+    </div>
+    <div class="modal-head">
+      <h2 id="customModalTitle">Edit <span>custom</span> <span>experimental · local only</span></h2>
+      <button class="modal-close" id="customClose" title="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="code-pane">
+        <div class="snippet-row">
+          <select class="snippet-select" id="presetCodeSelect" title="Load a built-in algorithm as an editable starting point">
+            <option value="">— load preset code —</option>
+          </select>
+        </div>
+        <div class="snippet-row" style="border-top:none;padding-top:0">
+          <select class="snippet-select" id="snippetSelect" title="Load a saved custom code"></select>
+          <button class="snippet-btn" id="snippetSave" title="Save current code as a named custom code">Save</button>
+          <button class="snippet-btn" id="snippetRename" title="Rename selected saved custom code">Rename</button>
+          <button class="snippet-btn danger" id="snippetDelete" title="Delete selected saved custom code">Delete</button>
+        </div>
+        <div class="code-wrap">
+          <textarea id="customCode" spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" placeholder="function draw(ctx) {
+  // your code here
+}"></textarea>
+        </div>
+        <div class="code-status" id="codeStatus">Ready — define function draw(ctx).</div>
+      </div>
+      <aside class="help-pane">
+        <h3>How it works</h3>
+        <p>Your code defines one function: <code>draw(ctx)</code>. It runs once per render and draws into two buffers you can paint directly.</p>
+        <h3>ctx arguments</h3>
+        <ul>
+          <li><b>ctx.w / ctx.h</b> — canvas size in pixels</li>
+          <li><b>ctx.rng</b> — seeded random number generator (0–1)</li>
+          <li><b>ctx.palette</b> — array of [r,g,b] colors (from the active palette)</li>
+          <li><b>ctx.paletteHex</b> — same colors as hex strings</li>
+          <li><b>ctx.params</b> — tuning params (flows, glow, frequency…)</li>
+          <li><b>ctx.alpha</b> — true when exporting an alpha overlay (transparent background)</li>
+          <li><b>ctx.base</b> — the background buffer (already filled with a gradient unless alpha mode)</li>
+          <li><b>ctx.ink</b> — the drawing buffer; paint here and it gets composited over the base</li>
+        </ul>
+        <h3>Helpers</h3>
+        <ul>
+          <li><b>ctx.stampCircle(buf, x, y, r, rgb, alpha)</b> — paint a soft dot</li>
+          <li><b>ctx.stampSegment(buf, x0, y0, x1, y1, r, rgb, alpha)</b> — paint a line</li>
+          <li><b>ctx.valueNoise(x, y, seed)</b> / <b>ctx.fbm(x, y, octaves, seed)</b> — noise fields</li>
+          <li><b>ctx.makeBuffer(w, h)</b> — create a new buffer</li>
+          <li><b>ctx.boxBlur(buf, radius)</b> — blur a buffer in place</li>
+          <li><b>ctx.lerpRgb(a, b, t)</b> / <b>ctx.shade(rgb, f)</b> / <b>ctx.lerp(a, b, t)</b> — color math</li>
+          <li><b>ctx.hexToRgb(hex)</b> / <b>ctx.rgbToHex(r, g, b)</b> / <b>ctx.hslToHex(h, s, l)</b> — color conversion</li>
+        </ul>
+        <h3>Rules</h3>
+        <p>Paint into <code>ctx.ink.data</code> (Uint8ClampedArray, RGBA) or use the helpers. You may also return <code>{ base, ink }</code> to replace both buffers. Anything thrown stops the render and shows an error.</p>
+        <h3>Example</h3>
+        <p><code>function draw(ctx) { for (var i = 0; i &lt; 40; i++) { ctx.stampCircle(ctx.ink, ctx.rng()*ctx.w, ctx.rng()*ctx.h, 4 + ctx.rng()*20, ctx.palette[i % ctx.palette.length], 0.5); } }</code></p>
+      </aside>
+    </div>
+    <div class="modal-foot">
+      <div class="spacer"></div>
+      <div class="modal-actions">
+        <a class="btn btn-ghost" href="custom-draw-prompt.md" download="custom-draw-prompt.md" title="Don't know how to write code? Ask your favorite AI with this instruction file">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+          Download prompt file
+        </a>
+        <button class="btn btn-ghost" id="customCancel">Cancel</button>
+        <button class="btn btn-primary" id="customApply">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>
+          Apply &amp; generate
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toasts"></div>
 
 <script>
@@ -642,41 +821,43 @@ var GEN = (function () {
     radius = Math.max(0, Math.round(radius));
     if (radius === 0) return;
     var w = buf.w, h = buf.h, src = buf.data;
-    var tmp = new Uint8ClampedArray(src.length);
-    var out = new Uint8ClampedArray(src.length);
-    var i, x, y, ch, sum, cnt;
+    var tmp = new Float32Array(src.length);
+    var out = new Float32Array(src.length);
+    var ch, x, y, sum, cnt, lo, hi, loOld, hiOld, loNew, hiNew;
+    // horizontal pass
     for (y = 0; y < h; y++) {
       var row = y * w * 4;
       for (ch = 0; ch < 4; ch++) {
+        lo = 0; hi = Math.min(w - 1, radius);
         sum = 0; cnt = 0;
-        for (x = -radius; x <= radius; x++) {
-          var xx = Math.max(0, Math.min(w - 1, x));
-          sum += src[row + xx * 4 + ch]; cnt++;
-        }
+        for (x = lo; x <= hi; x++) { sum += src[row + x * 4 + ch]; cnt++; }
         for (x = 0; x < w; x++) {
           tmp[row + x * 4 + ch] = sum / cnt;
-          var xa = Math.max(0, Math.min(w - 1, x - radius));
-          var xb = Math.max(0, Math.min(w - 1, x + radius + 1));
-          sum -= src[row + xa * 4 + ch];
-          sum += src[row + xb * 4 + ch];
-          cnt = Math.min(w - 1, x + radius + 1) - Math.max(0, x - radius) + 1;
+          loOld = Math.max(0, x - radius);
+          hiOld = Math.min(w - 1, x + radius);
+          loNew = Math.max(0, x + 1 - radius);
+          hiNew = Math.min(w - 1, x + 1 + radius);
+          if (loNew > loOld) sum -= src[row + loOld * 4 + ch];
+          if (hiNew > hiOld) sum += src[row + hiNew * 4 + ch];
+          cnt = hiNew - loNew + 1;
         }
       }
     }
+    // vertical pass
     for (x = 0; x < w; x++) {
       for (ch = 0; ch < 4; ch++) {
+        lo = 0; hi = Math.min(h - 1, radius);
         sum = 0; cnt = 0;
-        for (y = -radius; y <= radius; y++) {
-          var yy = Math.max(0, Math.min(h - 1, y));
-          sum += tmp[(yy * w + x) * 4 + ch]; cnt++;
-        }
+        for (y = lo; y <= hi; y++) { sum += tmp[(y * w + x) * 4 + ch]; cnt++; }
         for (y = 0; y < h; y++) {
           out[(y * w + x) * 4 + ch] = sum / cnt;
-          var ya = Math.max(0, Math.min(h - 1, y - radius));
-          var yb = Math.max(0, Math.min(h - 1, y + radius + 1));
-          sum -= tmp[(ya * w + x) * 4 + ch];
-          sum += tmp[(yb * w + x) * 4 + ch];
-          cnt = Math.min(h - 1, y + radius + 1) - Math.max(0, y - radius) + 1;
+          loOld = Math.max(0, y - radius);
+          hiOld = Math.min(h - 1, y + radius);
+          loNew = Math.max(0, y + 1 - radius);
+          hiNew = Math.min(h - 1, y + 1 + radius);
+          if (loNew > loOld) sum -= tmp[(loOld * w + x) * 4 + ch];
+          if (hiNew > hiOld) sum += tmp[(hiNew * w + x) * 4 + ch];
+          cnt = hiNew - loNew + 1;
         }
       }
     }
@@ -936,7 +1117,7 @@ var GEN = (function () {
       var trail = h * tailLen * (0.75 + rng() * 0.9);
       var headY = rng() * h;
       var width = params.strokeWidth * (0.9 + rng() * 2.2);
-      var steps = Math.max(16, Math.ceil(trail / 6));
+      var steps = Math.max(24, Math.ceil(trail / 2.5));
       var px = null, py = null;
       for (var s = 0; s <= steps; s++) {
         var t = s / steps;
@@ -968,15 +1149,49 @@ var GEN = (function () {
   }
 
   /* ---------------- Compositing ---------------- */
+  function boostAlpha(buf, factor) {
+    var d = buf.data;
+    for (var i = 0; i < d.length; i += 4) {
+      d[i] = Math.min(255, d[i] * factor);
+      d[i + 1] = Math.min(255, d[i + 1] * factor);
+      d[i + 2] = Math.min(255, d[i + 2] * factor);
+      d[i + 3] = Math.min(255, d[i + 3] * factor);
+    }
+  }
+  function capAlpha(buf, max) {
+    var d = buf.data;
+    for (var i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > max) {
+        var f = max / d[i + 3];
+        d[i] *= f; d[i + 1] *= f; d[i + 2] *= f;
+        d[i + 3] = max;
+      }
+    }
+  }
+
   function compositeScreen(dst, src, strength) {
     var d = dst.data, s = src.data;
     for (var i = 0; i < d.length; i += 4) {
       var sa = s[i + 3] / 255;
       if (sa <= 0) continue;
       var eff = strength * sa;
+      // screen blend on the color channels, then lift alpha so the halo reads as light
       d[i] = Math.min(255, d[i] + (s[i] - d[i] * s[i] / 255) * eff);
       d[i + 1] = Math.min(255, d[i + 1] + (s[i + 1] - d[i + 1] * s[i + 1] / 255) * eff);
       d[i + 2] = Math.min(255, d[i + 2] + (s[i + 2] - d[i + 2] * s[i + 2] / 255) * eff);
+      d[i + 3] = Math.min(255, d[i + 3] + sa * 255 * strength);
+    }
+  }
+  function compositeGlow(dst, src, strength) {
+    // additive glow: color adds directly, no alpha gate — light spilling around the form
+    var d = dst.data, s = src.data;
+    for (var i = 0; i < d.length; i += 4) {
+      var sa = s[i + 3] / 255;
+      if (sa <= 0) continue;
+      var eff = strength * sa;
+      d[i] = Math.min(255, d[i] + s[i] * eff);
+      d[i + 1] = Math.min(255, d[i + 1] + s[i + 1] * eff);
+      d[i + 2] = Math.min(255, d[i + 2] + s[i + 2] * eff);
       d[i + 3] = Math.min(255, d[i + 3] + sa * 255 * strength);
     }
   }
@@ -1080,6 +1295,56 @@ var GEN = (function () {
     }
   }
 
+  /* ---------------- Custom style runner ---------------- */
+  function runCustom(opts, code) {
+    var w = opts.width, h = opts.height;
+    var paletteHex = opts.palette || PRESETS[0].colors;
+    var palette = paletteHex.map(hexToRgb);
+    var params = opts.params;
+    var rng = makeRng(opts.seed + '::' + (opts.style || 'custom'));
+    var base = opts.alpha ? makeBuffer(w, h) : baseGradient(w, h, palette, params.baseDarkness, rng);
+    var ink = makeBuffer(w, h);
+    var ctx = {
+      w: w, h: h,
+      alpha: !!opts.alpha,
+      rng: rng,
+      palette: palette,
+      paletteHex: paletteHex,
+      params: params,
+      base: base,
+      ink: ink,
+      // helpers
+      makeBuffer: makeBuffer,
+      stampCircle: stampCircle,
+      stampSegment: stampSegment,
+      valueNoise: valueNoise,
+      fbm: fbm,
+      hexToRgb: hexToRgb,
+      rgbToHex: rgbToHex,
+      hslToHex: hslToHex,
+      lerpRgb: lerpRgb,
+      shade: shade,
+      lerp: lerp,
+      boxBlur: boxBlur,
+      compositeOver: compositeOver,
+      compositeGlow: compositeGlow,
+      compositeScreen: compositeScreen
+    };
+    var factory = new Function(code + '\n; return typeof draw !== "undefined" ? draw : undefined;');
+    var draw = factory();
+    if (typeof draw !== 'function') throw new Error('Your code must define a function named "draw". Example: function draw(ctx) { /* draw into ctx.ink */ }');
+    var result = draw(ctx);
+    // allow returning { base, ink } or nothing (buffers are mutated in place)
+    if (result && result.base && result.ink) {
+      base = result.base; ink = result.ink;
+    } else if (result && result.ink && !result.base) {
+      ink = result.ink;
+    } else if (result && result.base && !result.ink) {
+      base = result.base;
+    }
+    return { base: base, ink: ink };
+  }
+
   /* ---------------- Main entry ---------------- */
   function generate(opts) {
     opts = opts || {};
@@ -1107,7 +1372,12 @@ var GEN = (function () {
     };
     var rng = makeRng(seed + '::' + style);
     var result;
-    if (style === 'waves') result = genWaves({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
+    if (opts.customCode) {
+      result = runCustom({
+        width: w, height: h, seed: seed, style: style, palette: paletteHex,
+        params: params, alpha: params.alpha
+      }, opts.customCode);
+    } else if (style === 'waves') result = genWaves({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
     else if (style === 'rings') result = genRings({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
     else if (style === 'nebula') result = genNebula({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
     else if (style === 'lines') result = genLines({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
@@ -1122,14 +1392,20 @@ var GEN = (function () {
     }
     var glowAmt = params.glow;
     if (glowAmt > 0 && style !== 'waves') {
+      // wide soft halo — same strokes blurred, scaled up and capped so light spills around the whole form
       var glowWide = makeBuffer(w, h);
       glowWide.data.set(ink.data);
-      boxBlur(glowWide, Math.round(glowAmt * 1.8));
-      compositeScreen(base, glowWide, 0.45);
+      boxBlur(glowWide, Math.round(glowAmt * 2.2));
+      boostAlpha(glowWide, 1.6 + glowAmt * 0.05);
+      capAlpha(glowWide, 165);
+      compositeGlow(base, glowWide, 0.6);
+      // tight luminous core — same strokes blurred slightly, hugging the form
       var glowTight = makeBuffer(w, h);
       glowTight.data.set(ink.data);
-      boxBlur(glowTight, Math.max(1, Math.round(glowAmt * 0.55)));
-      compositeScreen(base, glowTight, 0.95);
+      boxBlur(glowTight, Math.max(1, Math.round(glowAmt * 0.5)));
+      boostAlpha(glowTight, 1.9 + glowAmt * 0.05);
+      capAlpha(glowTight, 195);
+      compositeGlow(base, glowTight, 0.8);
     }
     if (style !== 'waves') compositeOver(base, ink, 0.92);
 
@@ -1144,6 +1420,7 @@ var GEN = (function () {
 
   return {
     generate: generate,
+    runCustom: runCustom,
     PRESETS: PRESETS,
     randomPalette: randomPalette,
     hexToRgb: hexToRgb,
@@ -1173,7 +1450,7 @@ var GEN = (function () {
     { label: '2:3', w: 2, h: 3 },
     { label: '3:2', w: 3, h: 2 }
   ];
-  var MEGAPIXELS = [1, 2, 3, 4];
+  var MEGAPIXELS = [1, 2, 4, 8];
 
   function randomSeedString() {
     var words = ['aurora','nebula','prism','ember','drift','flux','halo','lumen','orbit','pulse','ridge','solar','wave','zenith','vertex','echo','flare','iris','nova','pixel'];
@@ -1197,6 +1474,7 @@ var GEN = (function () {
     quantum: false,
     endpoint: 'https://lfdr.de/qrng_api/qrng?length=64&format=HEX',
     alpha: false,
+    customCode: '',
     params: {
       flows: 110, frequency: 3.0, traceLength: 140, strokeWidth: 2.4,
       glow: 14, shine: 0.35, grain: 0.14, scanlines: 0, scanlineGap: 3, blur: 0, chroma: 2,
@@ -1211,7 +1489,7 @@ var GEN = (function () {
    'presetList','paletteColors','countSlider','countVal','seedInput','btnRandomSeed','btnQuantum',
    'seedOrigin','endpointInput','sliders','alphaToggle','btnDownload','preview','canvasFrame',
    'metaRes','metaMp','metaStyle','metaPalette','metaSeed','renderOverlay','toasts','btnRegen',
-   'stageWrap'].forEach(function (id) { els[id] = $(id); });
+   'stageWrap','presetCodeSelect'].forEach(function (id) { els[id] = $(id); });
 
   /* ---------------- resolution math ---------------- */
   function computeResolution() {
@@ -1271,7 +1549,8 @@ var GEN = (function () {
       blur: state.params.blur,
       chroma: state.params.chroma,
       vignette: state.params.vignette,
-      baseDarkness: state.params.baseDarkness
+      baseDarkness: state.params.baseDarkness,
+      customCode: state.style === 'custom' ? (state.customCode || '') : ''
     };
   }
 
@@ -1360,21 +1639,82 @@ var GEN = (function () {
       { id: 'rings', name: 'Rings', icon: '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".65"/><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".4"/>' },
       { id: 'nebula', name: 'Nebula', icon: '<circle cx="9" cy="9" r="4" fill="currentColor" opacity=".85"/><circle cx="17" cy="15" r="2.4" fill="currentColor" opacity=".55"/><circle cx="15" cy="6" r="1.3" fill="currentColor" opacity=".8"/>' },
       { id: 'lines', name: 'Lines', icon: '<path d="M3 7l18-3M3 13l18-3M3 19l18-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
-      { id: 'rain', name: 'Rain', icon: '<path d="M6 3v9M12 5v11M18 3v9M8 16v5M14 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' }
+      { id: 'rain', name: 'Rain', icon: '<path d="M6 3v9M12 5v11M18 3v9M8 16v5M14 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
+      { id: 'custom', name: 'Custom', icon: '<path d="m8 9-4 3 4 3M16 9l4 3-4 3M13 6l-2 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' }
     ];
     els.styleCards.innerHTML = '';
     styles.forEach(function (s) {
+      var wrap = document.createElement('div');
+      wrap.className = 'style-wrap';
       var b = document.createElement('button');
       b.className = 'style-card' + (s.id === state.style ? ' active' : '');
       b.innerHTML = '<svg viewBox="0 0 24 24">' + s.icon + '</svg><span>' + s.name + '</span>';
       b.addEventListener('click', function () {
+        // select the mode — no editor opens
         state.style = s.id;
         buildStyleCards();
         applyStyleDisabled();
         scheduleRender();
       });
-      els.styleCards.appendChild(b);
+      var editBtn = document.createElement('button');
+      editBtn.className = 'style-edit';
+      editBtn.title = 'Edit the ' + s.name + ' algorithm';
+      editBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+      editBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        openCustomModal(s.id);
+      });
+      wrap.appendChild(b);
+      wrap.appendChild(editBtn);
+      els.styleCards.appendChild(wrap);
     });
+
+    // ---- One card for saved custom codes (next to Custom) with a selector ----
+    var savedList = loadSavedCodes();
+    var activeIdx = -1;
+    if (state.style === 'custom') {
+      for (var i = 0; i < savedList.length; i++) {
+        if (savedList[i].code === state.customCode) { activeIdx = i; break; }
+      }
+    }
+    var wrap = document.createElement('div');
+    wrap.className = 'style-wrap saved-wrap';
+    var b = document.createElement('button');
+    b.className = 'style-card saved-card' + (activeIdx >= 0 ? ' active' : '');
+    b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span>Saved</span>';
+    b.title = 'Quick-select a saved custom code';
+    b.addEventListener('click', function () {
+      var sel = wrap.querySelector('.saved-select');
+      if (sel && !sel.disabled) sel.focus();
+    });
+    var selWrap = document.createElement('div');
+    selWrap.className = 'saved-select-wrap';
+    var sel = document.createElement('select');
+    sel.className = 'saved-select';
+    sel.title = 'Choose a saved custom code';
+    if (!savedList.length) {
+      var opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'no saved codes yet';
+      sel.appendChild(opt);
+      sel.disabled = true;
+    } else {
+      savedList.forEach(function (p, i) {
+        var opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+      sel.value = String(activeIdx >= 0 ? activeIdx : 0);
+      sel.addEventListener('change', function () {
+        var idx = parseInt(this.value, 10);
+        if (!isNaN(idx)) applyUserPreset(idx);
+      });
+    }
+    selWrap.appendChild(sel);
+    wrap.appendChild(b);
+    wrap.appendChild(selWrap);
+    els.styleCards.appendChild(wrap);
   }
 
   function buildPresets() {
@@ -1471,39 +1811,88 @@ var GEN = (function () {
       top.className = 'slider-top';
       var lab = document.createElement('label');
       lab.textContent = cfg.label;
+      var valWrap = document.createElement('span');
+      valWrap.className = 'val-wrap';
       var val = document.createElement('span');
       val.className = 'val';
       val.id = 'val-' + cfg.key;
-      top.appendChild(lab); top.appendChild(val);
+      // text input that lets you type any value — even beyond the slider limits
+      var num = document.createElement('input');
+      num.type = 'number';
+      num.className = 'param-num';
+      num.id = 'num-' + cfg.key;
+      num.step = cfg.step;
+      num.title = 'Type an exact value — can go beyond the slider range';
+      num.value = String(state.params[cfg.key]);
+      num.addEventListener('change', function () {
+        var raw = parseFloat(num.value);
+        if (isNaN(raw)) { num.value = String(state.params[cfg.key]); return; }
+        state.params[cfg.key] = raw;
+        syncSliderUI(cfg, raw);
+        scheduleRender();
+      });
+      num.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { num.blur(); }
+      });
+      valWrap.appendChild(val); valWrap.appendChild(num);
+      top.appendChild(lab); top.appendChild(valWrap);
       var input = document.createElement('input');
       input.type = 'range';
       input.min = cfg.min; input.max = cfg.max; input.step = cfg.step;
-      input.value = state.params[cfg.key];
+      input.value = Math.max(cfg.min, Math.min(cfg.max, state.params[cfg.key]));
       input.id = 'sl-' + cfg.key;
       input.addEventListener('input', function () {
         var v = parseFloat(input.value);
         state.params[cfg.key] = v;
-        val.textContent = cfg.fmt(v);
-        input.style.setProperty('--fill', ((v - cfg.min) / (cfg.max - cfg.min) * 100) + '%');
+        num.value = String(v);
+        syncSliderUI(cfg, v);
         scheduleRender();
       });
-      val.textContent = cfg.fmt(state.params[cfg.key]);
-      input.style.setProperty('--fill', ((state.params[cfg.key] - cfg.min) / (cfg.max - cfg.min) * 100) + '%');
+      syncSliderUI(cfg, state.params[cfg.key]);
       row.appendChild(top); row.appendChild(input);
       els.sliders.appendChild(row);
     });
     applyStyleDisabled();
   }
 
+  function syncSliderUI(cfg, v) {
+    var val = $('val-' + cfg.key);
+    var num = $('num-' + cfg.key);
+    var input = $('sl-' + cfg.key);
+    if (val) val.textContent = cfg.fmt(v);
+    if (num && document.activeElement !== num) num.value = String(v);
+    if (input) {
+      input.value = Math.max(cfg.min, Math.min(cfg.max, v));
+      // fill % is clamped to the visible track, but the number shows the true value
+      var t = (Math.max(cfg.min, Math.min(cfg.max, v)) - cfg.min) / (cfg.max - cfg.min) * 100;
+      input.style.setProperty('--fill', t + '%');
+      input.classList.toggle('out-of-range', v < cfg.min || v > cfg.max);
+    }
+  }
+
   function applyStyleDisabled() {
+    // custom mode exposes every slider — the user's code may use any of them
+    if (state.style === 'custom') {
+      SLIDERS.forEach(function (cfg) {
+        var el = $('sl-' + cfg.key);
+        if (el) el.disabled = false;
+        var num = $('num-' + cfg.key);
+        if (num) num.disabled = false;
+      });
+      return;
+    }
     var flowOnly = ['flows', 'traceLength', 'strokeWidth'];
     var isFlow = state.style === 'flow';
     flowOnly.forEach(function (k) {
       var el = $('sl-' + k);
       if (el) el.disabled = !isFlow;
+      var num = $('num-' + k);
+      if (num) num.disabled = !isFlow;
     });
     var glowEl = $('sl-glow');
     if (glowEl) glowEl.disabled = state.style === 'waves';
+    var glowNum = $('num-glow');
+    if (glowNum) glowNum.disabled = state.style === 'waves';
   }
 
   /* ---------------- seed & quantum ---------------- */
@@ -1607,6 +1996,8 @@ var GEN = (function () {
     buildPresets();
     buildPaletteColors();
     buildSliders();
+    refreshAllSavedSurfaces();
+    populatePresetCodeSelect();
     syncModeUI();
     refreshResolutionUI();
     els.countSlider.style.setProperty('--fill', ((state.colorCount - 2) / (8 - 2) * 100) + '%');
@@ -1681,6 +2072,8 @@ var GEN = (function () {
       if (e.key === 'd' || e.key === 'D') downloadPng();
     });
 
+    wireCustomModal();
+
     setSeed(state.seed, 'Local PRNG');
     els.seedOrigin.classList.remove('quantum', 'error');
     els.seedOrigin.innerHTML = '<span class="dot"></span><span>Local PRNG</span>';
@@ -1698,6 +2091,485 @@ var GEN = (function () {
     syncModeUI();
     refreshResolutionUI();
     scheduleRender();
+  }
+
+  function defaultCodeFor(mode) {
+    return MODE_DEFAULTS[mode] || MODE_DEFAULTS.custom;
+  }
+
+  /* ---------------- saved custom codes -------------------- */
+  // One list for everything: the editor's Save/Rename/Delete buttons and the
+  // Saved card selector both read/write this single store.
+  var SAVED_CODES_KEY = 'lumen.savedCustomCodes.v1';
+  var LEGACY_SNIPPETS_KEY = 'lumen.customSnippets.v1';
+  var LEGACY_USER_PRESETS_KEY = 'lumen.userPresets.v1';
+
+  function loadSavedCodes() {
+    try {
+      var raw = localStorage.getItem(SAVED_CODES_KEY);
+      if (!raw) {
+        // migrate any entries from the two legacy stores into the unified one
+        var migrated = [];
+        try {
+          var old = localStorage.getItem(LEGACY_SNIPPETS_KEY);
+          if (old) { var a = JSON.parse(old); if (Array.isArray(a)) migrated = migrated.concat(a); }
+        } catch (e) {}
+        try {
+          var old2 = localStorage.getItem(LEGACY_USER_PRESETS_KEY);
+          if (old2) { var b = JSON.parse(old2); if (Array.isArray(b)) migrated = migrated.concat(b); }
+        } catch (e) {}
+        // dedupe by name+code
+        var seen = {};
+        migrated = migrated.filter(function (p) {
+          if (!p || !p.name || !p.code) return false;
+          var k = p.name + '::' + p.code;
+          if (seen[k]) return false;
+          seen[k] = true;
+          return true;
+        });
+        if (migrated.length) {
+          localStorage.setItem(SAVED_CODES_KEY, JSON.stringify(migrated));
+          try { localStorage.removeItem(LEGACY_SNIPPETS_KEY); } catch (e) {}
+          try { localStorage.removeItem(LEGACY_USER_PRESETS_KEY); } catch (e) {}
+        }
+        return migrated;
+      }
+      var arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function saveSavedCodes(list) {
+    try { localStorage.setItem(SAVED_CODES_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+
+  var MODE_DEFAULTS = {
+    flow: [
+      'function draw(ctx) {',
+      '  var w = ctx.w, h = ctx.h, rng = ctx.rng, palette = ctx.palette;',
+      '  var freq = ctx.params.frequency;',
+      '  var turns = 2.2 + rng() * 1.6;',
+      '  var seedOff = Math.floor(rng() * 100000);',
+      '  var stepLen = 2.5 + rng() * 1.5;',
+      '  var flows = ctx.params.flows;',
+      '  var maxSteps = ctx.params.traceLength;',
+      '  var width = ctx.params.strokeWidth;',
+      '  for (var i = 0; i < flows; i++) {',
+      '    var x = rng() * w, y = rng() * h;',
+      '    var colA = palette[Math.floor(rng() * palette.length)];',
+      '    var colB = palette[Math.floor(rng() * palette.length)];',
+      '    var alpha = 0.30 + rng() * 0.30;',
+      '    var len = Math.floor(maxSteps * (0.55 + rng() * 0.9));',
+      '    var px = x, py = y;',
+      '    for (var s = 0; s < len; s++) {',
+      '      var n = ctx.fbm(x / w * freq, y / h * freq, 4, seedOff);',
+      '      var ang = (n * 2 - 1) * Math.PI * turns;',
+      '      x += Math.cos(ang) * stepLen;',
+      '      y += Math.sin(ang) * stepLen;',
+      '      if (x < -30 || x > w + 30 || y < -30 || y > h + 30) break;',
+      '      var t = s / len;',
+      '      var c = ctx.lerpRgb(colA, colB, t);',
+      '      ctx.stampSegment(ctx.ink, px, py, x, y, width * 0.5, c, alpha);',
+      '      px = x; py = y;',
+      '    }',
+      '  }',
+      '}'
+    ].join('\n'),
+    waves: [
+      'function draw(ctx) {',
+      '  var w = ctx.w, h = ctx.h, rng = ctx.rng, palette = ctx.palette;',
+      '  var cell = 5;',
+      '  var gw = Math.ceil(w / cell) + 1, gh = Math.ceil(h / cell) + 1;',
+      '  var grid = new Float32Array(gw * gh);',
+      '  var freq = ctx.params.frequency * 0.42;',
+      '  var seedOff = Math.floor(rng() * 100000);',
+      '  var stretchX = 0.28 + rng() * 0.25;',
+      '  var rot = rng() * Math.PI * 2;',
+      '  var ca = Math.cos(rot), sa = Math.sin(rot);',
+      '  for (var gy = 0; gy < gh; gy++) {',
+      '    for (var gx = 0; gx < gw; gx++) {',
+      '      var px = gx * cell, py = gy * cell;',
+      '      var rx = px * ca - py * sa, ry = px * sa + py * ca;',
+      '      grid[gy * gw + gx] = ctx.fbm(rx / w * freq * stretchX, ry / h * freq, 4, seedOff);',
+      '    }',
+      '  }',
+      '  var bands = 5.0 + ctx.params.frequency * 1.15;',
+      '  var sharp = 5.0 + rng() * 3.5;',
+      '  var dark = ctx.alpha ? 1 : (0.12 + ctx.params.baseDarkness * 0.40);',
+      '  for (var y = 0; y < h; y++) {',
+      '    var fy = y / cell, gy0 = Math.floor(fy), ty = fy - gy0;',
+      '    if (gy0 >= gh - 1) gy0 = gh - 2;',
+      '    for (var x = 0; x < w; x++) {',
+      '      var fx = x / cell, gx0 = Math.floor(fx), tx = fx - gx0;',
+      '      if (gx0 >= gw - 1) gx0 = gw - 2;',
+      '      var g00 = grid[gy0 * gw + gx0], g10 = grid[gy0 * gw + gx0 + 1];',
+      '      var g01 = grid[(gy0 + 1) * gw + gx0], g11 = grid[(gy0 + 1) * gw + gx0 + 1];',
+      '      var v = ctx.lerp(ctx.lerp(g00, g10, tx), ctx.lerp(g01, g11, tx), ty);',
+      '      var s = Math.abs(Math.sin(v * Math.PI * bands));',
+      '      var band = Math.pow(s, sharp);',
+      '      var t = Math.min(1, Math.max(0, band * 1.9));',
+      '      var pos = t * (palette.length - 1);',
+      '      var i0 = Math.floor(pos), i1 = Math.min(palette.length - 1, i0 + 1), tt = pos - i0;',
+      '      var c = ctx.lerpRgb(palette[i0], palette[i1], tt);',
+      '      var i = (y * w + x) * 4;',
+      '      if (ctx.alpha) {',
+      '        ctx.base.data[i] = c[0]; ctx.base.data[i+1] = c[1]; ctx.base.data[i+2] = c[2];',
+      '        ctx.base.data[i+3] = Math.round(240 * Math.min(1, 0.18 + band * 1.15));',
+      '      } else {',
+      '        ctx.base.data[i] = c[0] * (dark + (1 - dark) * band);',
+      '        ctx.base.data[i+1] = c[1] * (dark + (1 - dark) * band);',
+      '        ctx.base.data[i+2] = c[2] * (dark + (1 - dark) * band);',
+      '        ctx.base.data[i+3] = 255;',
+      '      }',
+      '    }',
+      '  }',
+      '}'
+    ].join('\n'),
+    rings: [
+      'function draw(ctx) {',
+      '  var w = ctx.w, h = ctx.h, rng = ctx.rng, palette = ctx.palette;',
+      '  var cx = w * (0.3 + rng() * 0.4), cy = h * (0.3 + rng() * 0.4);',
+      '  var maxR = Math.sqrt(Math.max(cx, w - cx) * Math.max(cx, w - cx) + Math.max(cy, h - cy) * Math.max(cy, h - cy)) + 40;',
+      '  var spacing = Math.min(w, h) / (9 + ctx.params.frequency * 2.4);',
+      '  var seedOff = Math.floor(rng() * 100000);',
+      '  var width = ctx.params.strokeWidth;',
+      '  var ring = 0;',
+      '  for (var r = spacing * 0.6; r < maxR; r += spacing * (0.72 + rng() * 0.35)) {',
+      '    var col = palette[ring % palette.length];',
+      '    var alpha = 0.5 + rng() * 0.45;',
+      '    var span = (0.35 + rng() * 0.85) * Math.PI * 2;',
+      '    var start = rng() * Math.PI * 2;',
+      '    var wob = 0.3 + rng() * 0.7;',
+      '    var arcLen = r * span;',
+      '    var steps = Math.max(8, Math.ceil(arcLen / 3));',
+      '    for (var i = 0; i <= steps; i++) {',
+      '      var th = start + (span * i) / steps;',
+      '      var rw = r + (ctx.valueNoise(Math.cos(th) * 1.6 + seedOff, Math.sin(th) * 1.6, seedOff) - 0.5) * spacing * wob;',
+      '      var x = cx + Math.cos(th) * rw, y = cy + Math.sin(th) * rw;',
+      '      ctx.stampCircle(ctx.ink, x, y, width * (0.8 + 0.7 * Math.abs(Math.sin(th * 2 + ring))), col, alpha);',
+      '    }',
+      '    ring++;',
+      '  }',
+      '}'
+    ].join('\n'),
+    nebula: [
+      'function draw(ctx) {',
+      '  var w = ctx.w, h = ctx.h, rng = ctx.rng, palette = ctx.palette;',
+      '  var minDim = Math.min(w, h);',
+      '  var blobs = 9 + Math.floor(rng() * 6);',
+      '  for (var i = 0; i < blobs; i++) {',
+      '    var bx = rng() * w, by = rng() * h;',
+      '    var br = minDim * (0.16 + rng() * 0.34);',
+      '    var col = palette[Math.floor(rng() * palette.length)];',
+      '    var alpha = 0.35 + rng() * 0.4;',
+      '    var sigma = br * 0.52;',
+      '    var x0 = Math.max(0, Math.floor(bx - br * 2)), x1 = Math.min(w - 1, Math.ceil(bx + br * 2));',
+      '    var y0 = Math.max(0, Math.floor(by - br * 2)), y1 = Math.min(h - 1, Math.ceil(by + br * 2));',
+      '    for (var y = y0; y <= y1; y++) {',
+      '      var dy = y - by;',
+      '      for (var x = x0; x <= x1; x++) {',
+      '        var dx = x - bx;',
+      '        var d2 = dx * dx + dy * dy;',
+      '        var g = Math.exp(-d2 / (2 * sigma * sigma)) * alpha;',
+      '        if (g < 0.004) continue;',
+      '        var j = (y * w + x) * 4;',
+      '        ctx.ink.data[j] = Math.min(255, ctx.ink.data[j] + col[0] * g);',
+      '        ctx.ink.data[j+1] = Math.min(255, ctx.ink.data[j+1] + col[1] * g);',
+      '        ctx.ink.data[j+2] = Math.min(255, ctx.ink.data[j+2] + col[2] * g);',
+      '        ctx.ink.data[j+3] = Math.min(255, ctx.ink.data[j+3] + g * 255);',
+      '      }',
+      '    }',
+      '  }',
+      '  var starCount = Math.floor((w * h) / 2600);',
+      '  var starCol = palette[palette.length - 1];',
+      '  for (var s = 0; s < starCount; s++) {',
+      '    var sx = rng() * w, sy = rng() * h;',
+      '    var sr = 0.6 + rng() * 1.6;',
+      '    var sa = 0.4 + rng() * 0.6;',
+      '    var sc = rng() < 0.55 ? [255, 255, 255] : starCol;',
+      '    ctx.stampCircle(ctx.ink, sx, sy, sr, sc, sa);',
+      '  }',
+      '}'
+    ].join('\n'),
+    lines: [
+      'function draw(ctx) {',
+      '  var w = ctx.w, h = ctx.h, rng = ctx.rng, palette = ctx.palette;',
+      '  var count = Math.round(ctx.params.flows * 0.55);',
+      '  var angle = rng() * Math.PI;',
+      '  var ca = Math.cos(angle), sa = Math.sin(angle);',
+      '  var minDim = Math.min(w, h);',
+      '  for (var i = 0; i < count; i++) {',
+      '    var t = rng();',
+      '    var pos = (t - 0.5) * (Math.max(w, h) * 1.6);',
+      '    var col = palette[Math.floor(rng() * palette.length)];',
+      '    var alpha = 0.35 + rng() * 0.45;',
+      '    var width = ctx.params.strokeWidth * (0.4 + rng() * 2.6);',
+      '    var jitter = rng() < 0.35;',
+      '    var wobAmp = jitter ? minDim * (0.02 + rng() * 0.07) : 0;',
+      '    var wobFreq = 1.5 + rng() * 4;',
+      '    var wobPhase = rng() * Math.PI * 2;',
+      '    var len = Math.max(w, h) * 1.8;',
+      '    var steps = Math.max(24, Math.ceil(len / 14));',
+      '    var px = null, py = null;',
+      '    for (var s = 0; s <= steps; s++) {',
+      '      var d = (s / steps - 0.5) * len;',
+      '      var off = pos + (jitter ? Math.sin(d * 0.004 * wobFreq + wobPhase) * wobAmp : 0);',
+      '      var x = w / 2 + ca * d - sa * off;',
+      '      var y = h / 2 + sa * d + ca * off;',
+      '      if (px !== null) ctx.stampSegment(ctx.ink, px, py, x, y, width * 0.5, col, alpha);',
+      '      px = x; py = y;',
+      '    }',
+      '  }',
+      '}'
+    ].join('\n'),
+    rain: [
+      'function draw(ctx) {',
+      '  var w = ctx.w, h = ctx.h, rng = ctx.rng, palette = ctx.palette;',
+      '  var cols = Math.max(16, Math.round(w / 18));',
+      '  var cellW = w / cols;',
+      '  var tailLen = 0.30 + rng() * 0.45;',
+      '  for (var c = 0; c < cols; c++) {',
+      '    var cx = (c + 0.5) * cellW + (rng() - 0.5) * cellW * 0.7;',
+      '    var phase = rng() * Math.PI * 2;',
+      '    var drift = (rng() - 0.5) * 0.35;',
+      '    var col = palette[Math.floor(rng() * palette.length)];',
+      '    var bright = 0.55 + rng() * 0.45;',
+      '    var trail = h * tailLen * (0.75 + rng() * 0.9);',
+      '    var headY = rng() * h;',
+      '    var width = ctx.params.strokeWidth * (0.9 + rng() * 2.2);',
+      '    var steps = Math.max(24, Math.ceil(trail / 2.5));',
+      '    var px = null, py = null;',
+      '    for (var s = 0; s <= steps; s++) {',
+      '      var t = s / steps;',
+      '      var y = headY + t * trail;',
+      '      var x = cx + Math.sin(phase + t * 3.2) * cellW * 0.28 + drift * t * cellW;',
+      '      var alpha = (1 - t) * bright * 0.85;',
+      '      if (y >= -20 && y <= h + 20) {',
+      '        if (px !== null) ctx.stampSegment(ctx.ink, px, py, x, y, width * (1 - t * 0.55) * 0.5, col, alpha);',
+      '        px = x; py = y;',
+      '      }',
+      '    }',
+      '    var hy = headY;',
+      '    var hx = cx + Math.sin(phase) * cellW * 0.28;',
+      '    if (hy >= -20 && hy <= h + 20) {',
+      '      ctx.stampCircle(ctx.ink, hx, hy, width * 1.15, [255, 255, 255], 0.75 * bright);',
+      '    }',
+      '  }',
+      '  var dust = Math.floor((w * h) / 9000);',
+      '  for (var d = 0; d < dust; d++) {',
+      '    var dx = rng() * w, dy = rng() * h;',
+      '    var dr = 0.5 + rng() * 1.4;',
+      '    var da = 0.25 + rng() * 0.5;',
+      '    var dc = palette[Math.floor(rng() * palette.length)];',
+      '    ctx.stampCircle(ctx.ink, dx, dy, dr, dc, da);',
+      '  }',
+      '}'
+    ].join('\n'),
+    custom: [
+      'function draw(ctx) {',
+      '  // paint into ctx.ink (Uint8ClampedArray RGBA) or use the helpers',
+      '  for (var i = 0; i < 40; i++) {',
+      '    ctx.stampCircle(ctx.ink, ctx.rng() * ctx.w, ctx.rng() * ctx.h,',
+      '      4 + ctx.rng() * 20, ctx.palette[i % ctx.palette.length], 0.5);',
+      '  }',
+      '}'
+    ].join('\n')
+  };
+
+  var DEFAULT_CUSTOM_CODE = MODE_DEFAULTS.custom;
+
+  function validateCustomCode(code) {
+    if (!code || !code.trim()) return { ok: false, message: 'Empty code — define function draw(ctx).' };
+    try {
+      new Function(code);
+    } catch (err) {
+      return { ok: false, message: 'Syntax error: ' + err.message };
+    }
+    try {
+      var factory = new Function(code + '\n; return typeof draw !== "undefined" ? draw : undefined;');
+      var draw = factory();
+      if (typeof draw !== 'function') return { ok: false, message: 'No function named "draw" found in your code.' };
+    } catch (err) {
+      return { ok: false, message: 'Runtime error while parsing: ' + err.message };
+    }
+    return { ok: true, message: 'Valid — ready to apply.' };
+  }
+
+  function applyUserPreset(idx) {
+    var list = loadSavedCodes();
+    if (!list[idx]) return;
+    state.customCode = list[idx].code;
+    state.style = 'custom';
+    applyStyleDisabled();
+    refreshAllSavedSurfaces();
+    scheduleRender();
+    toast('Applied saved code: ' + list[idx].name, 'ok');
+  }
+
+  function refreshAllSavedSurfaces() {
+    buildStyleCards();
+    refreshSnippetSelect();
+  }
+
+  function populatePresetCodeSelect() {
+    var sel = els.presetCodeSelect;
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— load preset code —</option>';
+    Object.keys(MODE_DEFAULTS).forEach(function (m) {
+      if (m === 'custom') return; // custom stays blank by design
+      var opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m.charAt(0).toUpperCase() + m.slice(1);
+      sel.appendChild(opt);
+    });
+  }
+
+  function refreshSnippetSelect() {
+    var sel = $('snippetSelect');
+    var snippets = loadSavedCodes();
+    sel.innerHTML = '';
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = snippets.length ? '— select a saved custom code —' : '— no saved custom codes yet —';
+    sel.appendChild(placeholder);
+    snippets.forEach(function (s, i) {
+      var opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = s.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  function openCustomModal(mode) {
+    var target = mode || 'custom';
+    var isPreset = target !== 'custom';
+    var modal = $('customModal');
+    var codeEl = $('customCode');
+    // load the read-only example for presets, or the editable custom code
+    codeEl.value = isPreset ? defaultCodeFor(target) : (state.customCode || defaultCodeFor('custom'));
+    codeEl.readOnly = isPreset;
+    codeEl.classList.toggle('readonly', isPreset);
+    // update modal title
+    $('customModalTitle').innerHTML = isPreset
+      ? 'Example: <span>' + target + '</span> <span>read-only · built-in algorithm</span>'
+      : 'Custom algorithm <span>experimental · local only</span>';
+    // hide the editing controls for presets
+    var presetRow = els.presetCodeSelect ? els.presetCodeSelect.parentElement : null;
+    if (presetRow) presetRow.style.display = isPreset ? 'none' : '';
+    var snippetRow = $('snippetSelect') ? $('snippetSelect').parentElement : null;
+    if (snippetRow) snippetRow.style.display = isPreset ? 'none' : '';
+    var applyBtn = $('customApply');
+    if (applyBtn) applyBtn.style.display = isPreset ? 'none' : '';
+    // status line
+    var el = $('codeStatus');
+    if (isPreset) {
+      el.className = 'code-status warn';
+      el.textContent = 'Read-only example — select a preset to use it as-is. Switch to Custom to write your own.';
+    } else {
+      setStatus(validateCustomCode(codeEl.value));
+    }
+    refreshSnippetSelect();
+    modal.classList.add('show');
+    setTimeout(function () { codeEl.focus(); }, 50);
+  }
+
+  function closeCustomModal() {
+    $('customModal').classList.remove('show');
+  }
+
+  function setStatus(result) {
+    var el = $('codeStatus');
+    el.className = 'code-status ' + (result.ok ? 'ok' : 'err');
+    el.textContent = result.message;
+  }
+
+  function applyCustomCode() {
+    var code = $('customCode').value;
+    var result = validateCustomCode(code);
+    setStatus(result);
+    if (!result.ok) return;
+    state.customCode = code;
+    state.style = 'custom';
+    applyStyleDisabled();
+    refreshAllSavedSurfaces();
+    closeCustomModal();
+    scheduleRender();
+    toast('Custom algorithm applied', 'ok');
+  }
+
+  function wireCustomModal() {
+    $('customClose').addEventListener('click', closeCustomModal);
+    $('customCancel').addEventListener('click', closeCustomModal);
+    $('customBackdrop').addEventListener('click', closeCustomModal);
+    $('customApply').addEventListener('click', applyCustomCode);
+
+    var codeEl = $('customCode');
+    codeEl.addEventListener('input', function () {
+      setStatus(validateCustomCode(codeEl.value));
+    });
+
+    $('snippetSave').addEventListener('click', function () {
+      var code = codeEl.value;
+      var result = validateCustomCode(code);
+      setStatus(result);
+      if (!result.ok) return;
+      var name = window.prompt('Name this saved custom code:', 'My algorithm');
+      if (!name || !name.trim()) return;
+      var snippets = loadSavedCodes();
+      snippets.push({ name: name.trim(), code: code, createdAt: Date.now() });
+      saveSavedCodes(snippets);
+      refreshAllSavedSurfaces();
+      toast('Saved custom code: ' + name.trim(), 'ok');
+    });
+
+    $('snippetRename').addEventListener('click', function () {
+      var idx = parseInt($('snippetSelect').value, 10);
+      if (isNaN(idx)) { toast('Select a saved code first', 'err'); return; }
+      var snippets = loadSavedCodes();
+      if (!snippets[idx]) return;
+      var name = window.prompt('New name:', snippets[idx].name);
+      if (!name || !name.trim()) return;
+      snippets[idx].name = name.trim();
+      saveSavedCodes(snippets);
+      refreshAllSavedSurfaces();
+      toast('Saved code renamed', 'ok');
+    });
+
+    $('snippetDelete').addEventListener('click', function () {
+      var idx = parseInt($('snippetSelect').value, 10);
+      if (isNaN(idx)) { toast('Select a saved code first', 'err'); return; }
+      var snippets = loadSavedCodes();
+      if (!snippets[idx]) return;
+      var name = snippets[idx].name;
+      if (!window.confirm('Delete saved code "' + name + '"?')) return;
+      snippets.splice(idx, 1);
+      saveSavedCodes(snippets);
+      refreshAllSavedSurfaces();
+      $('snippetSelect').value = '';
+      toast('Saved code deleted', 'ok');
+    });
+
+    els.presetCodeSelect.addEventListener('change', function () {
+      var m = this.value;
+      if (!m) return;
+      codeEl.value = defaultCodeFor(m);
+      setStatus(validateCustomCode(codeEl.value));
+      // reset the select so it can be re-used for the same preset later
+      this.value = '';
+    });
+
+    $('snippetSelect').addEventListener('change', function () {
+      var idx = parseInt(this.value, 10);
+      if (isNaN(idx)) return;
+      var snippets = loadSavedCodes();
+      if (!snippets[idx]) return;
+      codeEl.value = snippets[idx].code;
+      setStatus(validateCustomCode(codeEl.value));
+    });
+
+    // Escape closes the modal
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && $('customModal').classList.contains('show')) closeCustomModal();
+    });
   }
 
   document.addEventListener('DOMContentLoaded', init);
