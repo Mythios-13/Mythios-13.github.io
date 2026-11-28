@@ -56,7 +56,7 @@
       "template": "default",
       "title": "Local AI Experiments",
       "icon": "cpu",
-      "content": "All experiments run locally with AI tooling — no backend, no build step, just HTML files you can open in a browser.\n\n### Apps\n[SketchBoard, just draw something](https://Mythios-13.github.io/LocalTests/SketchBoard/index.html)\n\n### Games\n\n[AI Shooter](https://Mythios-13.github.io/LocalTests/Shooter/outrun-shooter.html)\n\n[Doom like Game](https://Mythios-13.github.io/LocalTests/DoomLike/doom-like.html)\n\n[City Walker GTA-like](https://Mythios-13.github.io/LocalTests/Walker/procedural-city-walker.html)\n\n[WhisperWood, relaxing exploration](https://Mythios-13.github.io/LocalTests/whisperwood/forest.html)\n\n"
+      "content": "All experiments run locally with AI tooling — no backend, no build step, just HTML files you can open in a browser.\n\n### Apps\n\n[SketchBoard, just draw something](https://Mythios-13.github.io/LocalTests/SketchBoard/index.html)\n\n[Lumen, Wallpaper generator](https://Mythios-13.github.io/LocalTests/LumenGen/lumen-wallpaper-generator.html)\n\n### Games\n\n[AI Shooter](https://Mythios-13.github.io/LocalTests/Shooter/outrun-shooter.html)\n\n[Doom like Game](https://Mythios-13.github.io/LocalTests/DoomLike/doom-like.html)\n\n[City Walker GTA-like](https://Mythios-13.github.io/LocalTests/Walker/procedural-city-walker.html)\n\n[WhisperWood, relaxing exploration](https://Mythios-13.github.io/LocalTests/whisperwood/forest.html)\n\n"
     },
     {
       "id": "3",

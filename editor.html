@@ -88,6 +88,7 @@
       <button class="secondary" @click="viewSite">👁 View site</button>
       <button class="secondary" @click="importOpen=!importOpen">📥 Import</button>
       <button class="secondary" @click="showJson=!showJson">{ } JSON</button>
+      <button class="secondary" @click="copyJson" :title="copied ? 'Copied!' : 'Copy JSON to clipboard'">{{ copied ? '✅ Copied' : '📋 Copy JSON' }}</button>
       <button class="primary" @click="downloadJSON">⬇️ Download content.json</button>
     </div>
 
@@ -267,6 +268,18 @@
         return String(s == null ? '' : s)
           .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+      function fallbackCopy(text, done) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); if (done) done(); } catch (e) {}
+        ta.remove();
       }
 
       var mdLib = typeof window.markdownit === 'function' ? window.markdownit({ linkify: true, html: false }) : null;
@@ -609,11 +622,15 @@
           },
           copyJson: function () {
             var self = this;
+            var text = this.prettyJson;
+            function done() {
+              self.copied = true;
+              setTimeout(function () { self.copied = false; }, 1500);
+            }
             if (navigator.clipboard && navigator.clipboard.writeText) {
-              navigator.clipboard.writeText(this.prettyJson).then(function () {
-                self.copied = true;
-                setTimeout(function () { self.copied = false; }, 1500);
-              });
+              navigator.clipboard.writeText(text).then(done).catch(function () { fallbackCopy(text, done); });
+            } else {
+              fallbackCopy(text, done);
             }
           },
           onFilePicked: function (ev) {

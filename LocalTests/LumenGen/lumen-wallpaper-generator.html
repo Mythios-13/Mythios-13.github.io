@@ -1,0 +1,1604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lumen — Procedural Wallpaper Generator</title>
+<meta name="description" content="Procedural abstract wallpaper generator with flow fields, waves, rings and nebulae. Resolution presets, megapixels, quantum RNG seeding, CRT effects and PNG export.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238b5cf6'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='6' fill='url(%23g)'/%3E%3Cpath d='M5 15c3-7 6 3 9-4 1.5-3 3-3.5 5-2' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#08090d; --panel:rgba(255,255,255,.045); --panel-border:rgba(255,255,255,.09);
+  --text:#e8eaf0; --dim:#98a0ae; --dimmer:#6b7280;
+  --accent:#8b5cf6; --accent2:#22d3ee; --danger:#fb7185;
+  --grad:linear-gradient(135deg,#8b5cf6 0%,#6366f1 45%,#22d3ee 100%);
+  --radius:14px; --radius-sm:10px;
+  --shadow:0 24px 80px -20px rgba(0,0,0,.75);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(139,92,246,.14), transparent 60%),
+    radial-gradient(800px 600px at -10% 110%, rgba(34,211,238,.10), transparent 60%);
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font-family:inherit;color:var(--text)}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:99px;border:2px solid var(--bg)}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- header ---------- */
+header{
+  position:relative;z-index:5;display:flex;align-items:center;gap:18px;
+  padding:14px 26px;border-bottom:1px solid var(--panel-border);
+  background:rgba(8,9,13,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-mark{
+  width:38px;height:38px;border-radius:11px;background:var(--grad);
+  display:grid;place-items:center;box-shadow:0 6px 22px -6px rgba(139,92,246,.55);
+}
+.logo-mark svg{width:22px;height:22px}
+h1{font-size:17px;font-weight:650;letter-spacing:.2px}
+h1 span{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tagline{font-size:11.5px;color:var(--dim);margin-top:2px;letter-spacing:.3px}
+.header-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:11px;
+  font-size:13px;font-weight:600;letter-spacing:.2px;transition:transform .15s ease, box-shadow .2s ease, background .2s ease, opacity .2s;
+  white-space:nowrap;
+}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--grad);color:#fff;box-shadow:0 10px 30px -10px rgba(124,93,250,.65)}
+.btn-primary:hover{box-shadow:0 14px 36px -8px rgba(124,93,250,.8);transform:translateY(-1px)}
+.btn-ghost{background:rgba(255,255,255,.06);border:1px solid var(--panel-border);color:var(--text)}
+.btn-ghost:hover{background:rgba(255,255,255,.11)}
+.btn-quantum{background:linear-gradient(135deg,#0ea5e9,#22d3ee);color:#04141c;box-shadow:0 10px 26px -10px rgba(34,211,238,.55)}
+.btn-quantum:hover{box-shadow:0 14px 32px -8px rgba(34,211,238,.7);transform:translateY(-1px)}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.btn svg{width:15px;height:15px;flex:none}
+
+/* ---------- layout ---------- */
+main{position:relative;z-index:1;display:grid;grid-template-columns:352px 1fr;height:calc(100vh - 67px)}
+aside{
+  overflow-y:auto;overflow-x:hidden;padding:18px 16px 40px;
+  border-right:1px solid var(--panel-border);
+  background:rgba(255,255,255,.015);
+}
+section#stage{display:flex;flex-direction:column;min-width:0;min-height:0}
+.stage-canvas-wrap{
+  flex:1;min-height:0;display:grid;place-items:center;padding:26px;position:relative;
+  background:
+    radial-gradient(1200px 700px at 50% 30%, rgba(139,92,246,.07), transparent 70%);
+}
+.canvas-frame{
+  position:relative;max-width:100%;max-height:100%;
+  border-radius:var(--radius);box-shadow:var(--shadow);
+  outline:1px solid rgba(255,255,255,.12);outline-offset:1px;
+}
+#preview{display:block;max-width:100%;max-height:calc(100vh - 210px);border-radius:var(--radius);background:transparent}
+.checker{background:
+  conic-gradient(#26262c 0 25%, #1b1b21 0 50%, #26262c 0 75%, #1b1b21 0) 0 0/22px 22px;}
+.stage-footer{
+  border-top:1px solid var(--panel-border);padding:12px 26px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  background:rgba(255,255,255,.02);
+}
+.meta{display:flex;gap:14px;flex-wrap:wrap;align-items:center;min-width:0}
+.meta-item{display:flex;flex-direction:column;gap:2px}
+.meta-label{font-size:9.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dimmer)}
+.meta-value{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.meta-value.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:500;color:#c4b5fd}
+.stage-footer .spacer{flex:1}
+.hint{font-size:11px;color:var(--dimmer)}
+kbd{font-family:ui-monospace,Menlo,monospace;font-size:10px;padding:2px 6px;border-radius:5px;border:1px solid var(--panel-border);background:rgba(255,255,255,.06);color:var(--dim)}
+
+/* ---------- sidebar sections ---------- */
+.sec{margin-bottom:22px}
+.sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.sec-title{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:1.6px;color:var(--dim);display:flex;align-items:center;gap:7px}
+.sec-title svg{width:13px;height:13px;opacity:.8}
+.sec-note{font-size:10.5px;color:var(--dimmer)}
+.card{background:var(--panel);border:1px solid var(--panel-border);border-radius:var(--radius);padding:14px}
+
+/* aspect chips */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{
+  padding:7px 11px;border-radius:9px;font-size:11.5px;font-weight:600;letter-spacing:.3px;
+  background:rgba(255,255,255,.05);border:1px solid transparent;color:var(--dim);
+  transition:all .15s ease;
+}
+.chip:hover{color:var(--text);background:rgba(255,255,255,.1)}
+.chip.active{background:var(--grad);color:#fff;box-shadow:0 4px 14px -4px rgba(124,93,250,.6)}
+
+/* mp segmented */
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.seg button{
+  padding:9px 0;border-radius:9px;font-size:12px;font-weight:650;text-align:center;
+  background:rgba(255,255,255,.05);border:1px solid transparent;color:var(--dim);transition:all .15s;
+}
+.seg button:hover{color:var(--text);background:rgba(255,255,255,.1)}
+.seg button.active{background:rgba(139,92,246,.22);border-color:rgba(139,92,246,.55);color:#ddd0ff}
+
+/* resolution readout */
+.res-readout{
+  display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  margin-top:10px;padding:10px 12px;border-radius:10px;
+  background:rgba(34,211,238,.07);border:1px solid rgba(34,211,238,.22);
+}
+.res-readout .big{font-size:19px;font-weight:750;font-variant-numeric:tabular-nums;letter-spacing:.3px}
+.res-readout .sub{font-size:10.5px;color:#7dd3fc;text-align:right;line-height:1.5}
+
+/* custom w/h */
+.wh-row{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:end;margin-top:10px}
+.wh-row .x{color:var(--dimmer);font-size:13px;padding-bottom:9px;text-align:center}
+.field label{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dimmer);margin-bottom:5px}
+.num-input{
+  width:100%;padding:9px 10px;border-radius:9px;font-size:13px;font-weight:600;
+  background:rgba(0,0,0,.35);border:1px solid var(--panel-border);outline:none;
+  transition:border-color .15s;
+}
+.num-input:focus{border-color:rgba(139,92,246,.6)}
+.lock-row{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:11px;color:var(--dim)}
+.lock-row input{accent-color:#8b5cf6}
+
+/* style cards */
+.styles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.style-card{
+  display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px 8px;
+  border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid var(--panel-border);
+  transition:all .15s;color:var(--dim);
+}
+.style-card:hover{color:var(--text);background:rgba(255,255,255,.08)}
+.style-card.active{background:rgba(139,92,246,.18);border-color:rgba(139,92,246,.6);color:#e3d7ff;box-shadow:0 6px 18px -8px rgba(139,92,246,.5)}
+.style-card svg{width:26px;height:26px}
+.style-card span{font-size:11px;font-weight:650;letter-spacing:.4px}
+
+/* palette */
+.preset-list{display:flex;flex-direction:column;gap:6px;max-height:230px;overflow-y:auto;padding-right:2px}
+.preset{
+  display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:10px;
+  border:1px solid transparent;transition:all .15s;text-align:left;
+}
+.preset:hover{background:rgba(255,255,255,.06)}
+.preset.active{border-color:rgba(139,92,246,.65);background:rgba(139,92,246,.14)}
+.preset .strip{flex:1;height:22px;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.preset .name{font-size:10.5px;font-weight:600;color:var(--dim);min-width:86px;text-align:right}
+.preset.active .name{color:#e3d7ff}
+.preset-random{
+  display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;
+  border-radius:10px;border:1px dashed rgba(139,92,246,.5);color:#c4b5fd;
+  font-size:12px;font-weight:650;letter-spacing:.3px;transition:all .15s;
+}
+.preset-random:hover{background:rgba(139,92,246,.12)}
+.preset-random.active{background:rgba(139,92,246,.2);border-style:solid}
+.preset-random svg{width:14px;height:14px}
+.palette-colors{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+.color-dot{position:relative;width:34px;height:34px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,.2);transition:transform .15s;cursor:pointer}
+.color-dot:hover{transform:scale(1.12)}
+.color-dot input{position:absolute;inset:-8px;width:60px;height:60px;cursor:pointer;border:none;padding:0;background:none}
+.count-row{display:flex;align-items:center;gap:10px;margin-top:12px}
+.count-row .lbl{font-size:11px;color:var(--dim);white-space:nowrap}
+.count-row .val{font-size:12px;font-weight:700;color:#c4b5fd;min-width:14px;text-align:center;font-variant-numeric:tabular-nums}
+
+/* seed */
+.seed-row{display:flex;gap:7px}
+.seed-input{
+  flex:1;min-width:0;padding:9px 11px;border-radius:9px;font-size:12px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  background:rgba(0,0,0,.35);border:1px solid var(--panel-border);outline:none;
+}
+.seed-input:focus{border-color:rgba(139,92,246,.6)}
+.icon-btn{
+  width:37px;height:37px;flex:none;border-radius:9px;display:grid;place-items:center;
+  background:rgba(255,255,255,.06);border:1px solid var(--panel-border);transition:all .15s;
+}
+.icon-btn:hover{background:rgba(255,255,255,.13)}
+.icon-btn svg{width:16px;height:16px}
+.quantum-btn{
+  width:100%;margin-top:9px;padding:10px;border-radius:10px;display:flex;align-items:center;justify-content:center;gap:8px;
+  font-size:12px;font-weight:700;letter-spacing:.3px;
+  background:linear-gradient(135deg,rgba(14,165,233,.2),rgba(34,211,238,.2));
+  border:1px solid rgba(34,211,238,.4);color:#a5f3fc;transition:all .15s;
+}
+.quantum-btn:hover{background:linear-gradient(135deg,rgba(14,165,233,.32),rgba(34,211,238,.32));box-shadow:0 8px 22px -10px rgba(34,211,238,.5)}
+.quantum-btn svg{width:15px;height:15px}
+.quantum-btn.loading{opacity:.6;pointer-events:none}
+.seed-origin{margin-top:8px;font-size:10.5px;color:var(--dimmer);display:flex;align-items:center;gap:6px;min-height:16px}
+.seed-origin .dot{width:7px;height:7px;border-radius:50%;background:#4ade80;box-shadow:0 0 8px #4ade80}
+.seed-origin.quantum .dot{background:#22d3ee;box-shadow:0 0 8px #22d3ee}
+.seed-origin.error .dot{background:#fb7185;box-shadow:0 0 8px #fb7185}
+details.adv{margin-top:10px}
+details.adv summary{font-size:10.5px;color:var(--dimmer);cursor:pointer;letter-spacing:.4px;user-select:none}
+details.adv summary:hover{color:var(--dim)}
+details.adv .inner{margin-top:8px}
+.endpoint-input{
+  width:100%;padding:8px 10px;border-radius:8px;font-size:10.5px;
+  font-family:ui-monospace,Menlo,monospace;background:rgba(0,0,0,.35);
+  border:1px solid var(--panel-border);outline:none;color:var(--dim);
+}
+
+/* sliders */
+.slider-group{display:flex;flex-direction:column;gap:11px}
+.slider-row{display:flex;flex-direction:column;gap:5px}
+.slider-top{display:flex;justify-content:space-between;align-items:baseline}
+.slider-top label{font-size:11.5px;font-weight:550;color:#c9cdd6}
+.slider-top .val{font-size:11px;font-weight:700;color:#c4b5fd;font-variant-numeric:tabular-nums;font-family:ui-monospace,Menlo,monospace}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer;
+}
+input[type=range]::-webkit-slider-runnable-track{
+  height:5px;border-radius:99px;
+  background:linear-gradient(90deg,#8b5cf6 var(--fill,50%),rgba(255,255,255,.12) var(--fill,50%));
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:15px;height:15px;border-radius:50%;margin-top:-5px;
+  background:#fff;border:2px solid #8b5cf6;box-shadow:0 2px 8px rgba(0,0,0,.5);
+  transition:transform .12s;
+}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2)}
+input[type=range]::-moz-range-track{height:5px;border-radius:99px;background:rgba(255,255,255,.12)}
+input[type=range]::-moz-range-progress{height:5px;border-radius:99px;background:#8b5cf6}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:#fff;border:2px solid #8b5cf6}
+input[type=range]:disabled{opacity:.35;cursor:not-allowed}
+
+/* output */
+.alpha-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.alpha-toggle button{
+  padding:9px 6px;border-radius:9px;font-size:11px;font-weight:650;letter-spacing:.3px;
+  background:rgba(255,255,255,.05);border:1px solid transparent;color:var(--dim);transition:all .15s;
+}
+.alpha-toggle button.active{background:rgba(34,211,238,.16);border-color:rgba(34,211,238,.5);color:#a5f3fc}
+.download-btn{width:100%;justify-content:center;padding:13px;font-size:13.5px}
+.footnote{margin-top:12px;font-size:10px;color:var(--dimmer);line-height:1.6;text-align:center}
+
+/* toast */
+#toasts{position:fixed;bottom:22px;right:22px;z-index:50;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.toast{
+  padding:11px 16px;border-radius:11px;font-size:12px;font-weight:550;
+  background:rgba(20,22,30,.92);border:1px solid var(--panel-border);box-shadow:0 12px 34px -10px rgba(0,0,0,.7);
+  display:flex;align-items:center;gap:9px;animation:toastIn .25s ease;backdrop-filter:blur(8px);
+  max-width:340px;
+}
+.toast.ok{border-color:rgba(74,222,128,.4)} .toast.err{border-color:rgba(251,113,133,.45)}
+.toast .tdot{width:8px;height:8px;border-radius:50%;flex:none}
+.toast.ok .tdot{background:#4ade80;box-shadow:0 0 8px #4ade80}
+.toast.err .tdot{background:#fb7185;box-shadow:0 0 8px #fb7185}
+@keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.toast.out{opacity:0;transform:translateY(8px);transition:all .3s}
+
+/* progress overlay */
+#renderOverlay{
+  position:absolute;inset:0;z-index:20;display:none;place-items:center;border-radius:var(--radius);
+  background:rgba(8,9,13,.72);backdrop-filter:blur(6px);
+}
+#renderOverlay.show{display:grid}
+.spinner{width:44px;height:44px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:#8b5cf6;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay-inner{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--dim);font-size:12.5px;letter-spacing:.4px}
+
+/* responsive */
+@media (max-width:1020px){
+  body{overflow:auto}
+  main{grid-template-columns:1fr;height:auto}
+  section#stage{order:-1;min-height:52vh}
+  aside{border-right:none;border-top:1px solid var(--panel-border);overflow:visible}
+  #preview{max-height:44vh}
+  header{flex-wrap:wrap}
+}
+
+/* mode tabs + disabled states */
+.mode-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.mode-tab{padding:9px 8px;border-radius:9px;font-size:11.5px;font-weight:650;letter-spacing:.3px;background:rgba(255,255,255,.05);border:1px solid transparent;color:var(--dim);transition:all .15s}
+.mode-tab:hover{color:var(--text);background:rgba(255,255,255,.09)}
+.mode-tab.active{background:rgba(139,92,246,.22);border-color:rgba(139,92,246,.55);color:#ddd0ff}
+.disabled{opacity:.35;pointer-events:none;filter:saturate(.4)}
+.section-note{font-size:10.5px;color:var(--dimmer);line-height:1.5;margin-top:8px}
+.hint-row{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--dimmer);margin-top:8px}
+.hint-row svg{width:12px;height:12px;flex:none}
+
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M3 16c4-11 7 5 11-5 1.6-3.4 4-4 7-2"/></svg>
+    </div>
+    <div>
+      <h1>Lumen <span>Generator</span></h1>
+      <div class="tagline">Procedural abstract wallpapers · single file</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-ghost" id="btnRegen" title="New random seed (Space)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      Regenerate
+    </button>
+    <button class="btn btn-primary" id="btnDownload" title="Save as PNG (D)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+      Download PNG
+    </button>
+  </div>
+</header>
+
+<main>
+  <aside>
+    <section class="sec">
+      <div class="sec-head">
+        <div class="sec-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 4v16"/></svg>
+          Resolution
+        </div>
+      </div>
+      <div class="card">
+        <div class="mode-tabs">
+          <button class="mode-tab active" data-mode="mp">Megapixels</button>
+          <button class="mode-tab" data-mode="custom">Custom size</button>
+        </div>
+        <div id="aspectSection">
+          <div class="chips" id="aspectChips"></div>
+        </div>
+        <div style="height:10px"></div>
+        <div id="mpSection">
+          <div class="seg" id="mpSeg"></div>
+        </div>
+        <div id="customSection" class="disabled">
+          <div class="wh-row">
+            <div class="field">
+              <label for="customW">Width (px)</label>
+              <input type="number" id="customW" class="num-input" min="8" max="8192" step="2" value="1920">
+            </div>
+            <div class="x">×</div>
+            <div class="field">
+              <label for="customH">Height (px)</label>
+              <input type="number" id="customH" class="num-input" min="8" max="8192" step="2" value="1080">
+            </div>
+          </div>
+          <label class="lock-row">
+            <input type="checkbox" id="lockAspect" checked> Lock aspect ratio to selected chip
+          </label>
+        </div>
+        <div class="res-readout" id="resReadout">
+          <div class="big">1920 × 1080</div>
+          <div class="sub" id="resSub">16:9 · 2.07 MP</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head">
+        <div class="sec-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l2.4 5.6L20 10l-4.4 3.4L17 19l-5-2.8L7 19l1.4-5.6L4 10l5.6-1.4z"/></svg>
+          Style
+        </div>
+      </div>
+      <div class="styles" id="styleCards"></div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head">
+        <div class="sec-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18" opacity=".5"/><circle cx="12" cy="12" r="3.5"/></svg>
+          Palette
+        </div>
+      </div>
+      <div class="card">
+        <div class="preset-list" id="presetList"></div>
+        <div class="palette-colors" id="paletteColors"></div>
+        <div class="count-row">
+          <span class="lbl">Colors</span>
+          <input type="range" id="countSlider" min="2" max="8" step="1" value="5" style="flex:1;--fill:50%">
+          <span class="val" id="countVal">5</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head">
+        <div class="sec-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          Seed
+        </div>
+      </div>
+      <div class="card">
+        <div class="seed-row">
+          <input type="text" id="seedInput" class="seed-input" spellcheck="false" autocomplete="off">
+          <button class="icon-btn" id="btnRandomSeed" title="Random seed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg>
+          </button>
+        </div>
+        <button class="quantum-btn" id="btnQuantum" title="Fetch true quantum randomness from the lfdr.de QRNG API">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+          Use quantum RNG
+        </button>
+        <div class="seed-origin" id="seedOrigin"><span class="dot"></span><span>Local PRNG</span></div>
+        <details class="adv">
+          <summary>QRNG endpoint (advanced)</summary>
+          <div class="inner">
+            <input type="text" id="endpointInput" class="endpoint-input" spellcheck="false" autocomplete="off" value="https://lfdr.de/qrng_api/qrng?length=64&amp;format=HEX">
+            <div class="section-note">GET request → JSON <code>{qrn: [hex], length: N}</code>. Default points at the public lfdr.de QRNG service (ID Quantique PCIe). Any compatible endpoint works.</div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head">
+        <div class="sec-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h10M18 8h2M4 16h2M10 16h10"/><circle cx="16" cy="8" r="2.5"/><circle cx="8" cy="16" r="2.5"/></svg>
+          Tuning
+        </div>
+      </div>
+      <div class="card">
+        <div class="slider-group" id="sliders"></div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head">
+        <div class="sec-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          Output
+        </div>
+      </div>
+      <div class="card">
+        <div class="alpha-toggle" id="alphaToggle">
+          <button data-alpha="false" class="active">Solid</button>
+          <button data-alpha="true">Alpha overlay</button>
+        </div>
+        <div class="hint-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+          Alpha mode exports a transparent-background PNG for use as filters / overlays on other images.
+        </div>
+        <div class="footnote">All rendering happens locally in your browser — nothing is uploaded except the optional quantum entropy request.</div>
+      </div>
+    </section>
+  </aside>
+
+  <section id="stage">
+    <div class="stage-canvas-wrap" id="stageWrap">
+      <div class="canvas-frame checker" id="canvasFrame">
+        <canvas id="preview"></canvas>
+        <div id="renderOverlay">
+          <div class="overlay-inner">
+            <div class="spinner"></div>
+            <div>Rendering…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="stage-footer">
+      <div class="meta">
+        <div class="meta-item"><span class="meta-label">Resolution</span><span class="meta-value mono" id="metaRes">—</span></div>
+        <div class="meta-item"><span class="meta-label">Size</span><span class="meta-value" id="metaMp">—</span></div>
+        <div class="meta-item"><span class="meta-label">Style</span><span class="meta-value" id="metaStyle">—</span></div>
+        <div class="meta-item"><span class="meta-label">Palette</span><span class="meta-value" id="metaPalette">—</span></div>
+        <div class="meta-item"><span class="meta-label">Seed</span><span class="meta-value mono" id="metaSeed">—</span></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="hint"><kbd>Space</kbd> regenerate &nbsp;·&nbsp; <kbd>D</kbd> download</div>
+    </div>
+  </section>
+</main>
+
+<div id="toasts"></div>
+
+<script>
+/* Procedural wallpaper engine — pure JS (ES5), no DOM. */
+var GEN = (function () {
+  'use strict';
+
+  /* ---------------- PRNG ---------------- */
+  function cyrb53(str, seed) {
+    var h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+    for (var i = 0; i < str.length; i++) {
+      var ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function makeRng(seedStr) {
+    var h = cyrb53(String(seedStr == null ? '' : seedStr), 0x9e3779b9) >>> 0;
+    return mulberry32(h);
+  }
+
+  /* ---------------- Noise ---------------- */
+  function hash2(ix, iy, seed) {
+    var h = Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263) ^ Math.imul(seed | 0, 974634211);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  function smooth(t) { return t * t * (3 - 2 * t); }
+  function valueNoise(x, y, seed) {
+    var ix = Math.floor(x), iy = Math.floor(y);
+    var fx = x - ix, fy = y - iy;
+    var a = hash2(ix, iy, seed), b = hash2(ix + 1, iy, seed);
+    var c = hash2(ix, iy + 1, seed), d = hash2(ix + 1, iy + 1, seed);
+    var u = smooth(fx), v = smooth(fy);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  function fbm(x, y, oct, seed) {
+    var sum = 0, amp = 0.5, freq = 1, norm = 0;
+    for (var i = 0; i < oct; i++) {
+      sum += amp * valueNoise(x * freq, y * freq, (seed + i * 101) | 0);
+      norm += amp; amp *= 0.5; freq *= 2.03;
+    }
+    return sum / norm;
+  }
+
+  /* ---------------- Color ---------------- */
+  function hexToRgb(hex) {
+    hex = String(hex).replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join('');
+    var n = parseInt(hex, 16);
+    if (isNaN(n)) return [128, 128, 128];
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function rgbToHex(r, g, b) {
+    function p(v) { return Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0'); }
+    return '#' + p(r) + p(g) + p(b);
+  }
+  function hslToHex(h, s, l) {
+    h = ((h % 360) + 360) % 360; s = Math.max(0, Math.min(1, s)); l = Math.max(0, Math.min(1, l));
+    var c = (1 - Math.abs(2 * l - 1)) * s;
+    var x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    var m = l - c / 2, r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; }
+    else if (h < 180) { g = c; b = x; } else if (h < 240) { g = x; b = c; }
+    else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    return rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+  }
+  function shade(rgb, f) { return [rgb[0] * f, rgb[1] * f, rgb[2] * f]; }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function lerpRgb(a, b, t) { return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]; }
+
+  /* ---------------- Palette presets ---------------- */
+  var PRESETS = [
+    { name: 'Ultraviolet',  colors: ['#240046', '#5a189a', '#7b2cbf', '#9d4edd', '#c77dff', '#e0aaff'] },
+    { name: 'Neon Cyber',   colors: ['#00f5d4', '#00bbf9', '#9b5de5', '#f15bb5', '#fee440'] },
+    { name: 'Sunset Ember', colors: ['#ff5e3a', '#ff9a3d', '#ffd166', '#2b1055'] },
+    { name: 'Ocean Deep',   colors: ['#03045e', '#0077b6', '#00b4d8', '#90e0ef'] },
+    { name: 'Aurora',       colors: ['#0b486b', '#379683', '#56ccf2', '#a8e063', '#f7fff7'] },
+    { name: 'Golden Hour',  colors: ['#3d1d2e', '#c1440e', '#f08a24', '#ffd166', '#fff3b0'] },
+    { name: 'Forest Mist',  colors: ['#081c15', '#2d6a4f', '#74c69d', '#d8f3dc'] },
+    { name: 'Desert Rose',  colors: ['#590d22', '#bc4749', '#f08080', '#ffe8d6'] },
+    { name: 'Candy Pop',    colors: ['#ff6b6b', '#feca57', '#48dbfb', '#1dd1a1', '#5f27cd'] },
+    { name: 'Acid Rain',    colors: ['#003049', '#d62828', '#fcbf49', '#eae2b7'] },
+    { name: 'Monochrome',   colors: ['#0d0d0d', '#6c757d', '#e9ecef'] },
+    { name: 'Mint Fade',    colors: ['#06d6a0', '#118ab2', '#073b4c'] }
+  ];
+
+  function randomPalette(count, rng) {
+    count = Math.max(2, Math.min(8, count | 0));
+    var schemes = ['analogous', 'complementary', 'triadic', 'split', 'mono', 'vivid'];
+    var scheme = schemes[Math.floor(rng() * schemes.length)];
+    var base = rng() * 360;
+    var colors = [], i, h, s, l;
+    if (scheme === 'mono') {
+      for (i = 0; i < count; i++) {
+        l = 0.12 + (0.78 * i) / Math.max(1, count - 1);
+        colors.push(hslToHex(base, 0.55 + rng() * 0.2, l));
+      }
+    } else if (scheme === 'analogous') {
+      for (i = 0; i < count; i++) {
+        h = base + (i - (count - 1) / 2) * (28 + rng() * 14);
+        s = 0.62 + rng() * 0.3; l = 0.42 + rng() * 0.28;
+        colors.push(hslToHex(h, s, l));
+      }
+    } else if (scheme === 'complementary') {
+      for (i = 0; i < count; i++) {
+        h = (i % 2 === 0) ? base + (rng() * 24 - 12) : base + 180 + (rng() * 24 - 12);
+        s = 0.65 + rng() * 0.3; l = 0.38 + rng() * 0.3;
+        colors.push(hslToHex(h, s, l));
+      }
+    } else if (scheme === 'triadic') {
+      for (i = 0; i < count; i++) {
+        h = base + (i % 3) * 120 + (rng() * 22 - 11);
+        s = 0.62 + rng() * 0.3; l = 0.36 + rng() * 0.32;
+        colors.push(hslToHex(h, s, l));
+      }
+    } else if (scheme === 'split') {
+      for (i = 0; i < count; i++) {
+        h = (i % 3 === 0) ? base + (rng() * 20 - 10) : base + 150 + (i % 2) * 60 + (rng() * 20 - 10);
+        s = 0.62 + rng() * 0.3; l = 0.38 + rng() * 0.3;
+        colors.push(hslToHex(h, s, l));
+      }
+    } else { /* vivid */
+      for (i = 0; i < count; i++) {
+        h = base + (i / count) * 300 + rng() * 30;
+        s = 0.7 + rng() * 0.3; l = 0.42 + rng() * 0.3;
+        colors.push(hslToHex(h, s, l));
+      }
+    }
+    return colors;
+  }
+
+  /* ---------------- Buffer helpers ---------------- */
+  function makeBuffer(w, h) {
+    return { w: w, h: h, data: new Uint8ClampedArray(w * h * 4) };
+  }
+
+  function boxBlur(buf, radius) {
+    radius = Math.max(0, Math.round(radius));
+    if (radius === 0) return;
+    var w = buf.w, h = buf.h, src = buf.data;
+    var tmp = new Uint8ClampedArray(src.length);
+    var out = new Uint8ClampedArray(src.length);
+    var i, x, y, ch, sum, cnt;
+    for (y = 0; y < h; y++) {
+      var row = y * w * 4;
+      for (ch = 0; ch < 4; ch++) {
+        sum = 0; cnt = 0;
+        for (x = -radius; x <= radius; x++) {
+          var xx = Math.max(0, Math.min(w - 1, x));
+          sum += src[row + xx * 4 + ch]; cnt++;
+        }
+        for (x = 0; x < w; x++) {
+          tmp[row + x * 4 + ch] = sum / cnt;
+          var xa = Math.max(0, Math.min(w - 1, x - radius));
+          var xb = Math.max(0, Math.min(w - 1, x + radius + 1));
+          sum -= src[row + xa * 4 + ch];
+          sum += src[row + xb * 4 + ch];
+          cnt = Math.min(w - 1, x + radius + 1) - Math.max(0, x - radius) + 1;
+        }
+      }
+    }
+    for (x = 0; x < w; x++) {
+      for (ch = 0; ch < 4; ch++) {
+        sum = 0; cnt = 0;
+        for (y = -radius; y <= radius; y++) {
+          var yy = Math.max(0, Math.min(h - 1, y));
+          sum += tmp[(yy * w + x) * 4 + ch]; cnt++;
+        }
+        for (y = 0; y < h; y++) {
+          out[(y * w + x) * 4 + ch] = sum / cnt;
+          var ya = Math.max(0, Math.min(h - 1, y - radius));
+          var yb = Math.max(0, Math.min(h - 1, y + radius + 1));
+          sum -= tmp[(ya * w + x) * 4 + ch];
+          sum += tmp[(yb * w + x) * 4 + ch];
+          cnt = Math.min(h - 1, y + radius + 1) - Math.max(0, y - radius) + 1;
+        }
+      }
+    }
+    buf.data.set(out);
+  }
+
+  function stampCircle(buf, cx, cy, r, rgb, alpha) {
+    var w = buf.w, h = buf.h, data = buf.data;
+    var rr = r * r;
+    var x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(w - 1, Math.ceil(cx + r));
+    var y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(h - 1, Math.ceil(cy + r));
+    for (var y = y0; y <= y1; y++) {
+      var dy = y - cy;
+      for (var x = x0; x <= x1; x++) {
+        var dx = x - cx;
+        if (dx * dx + dy * dy > rr) continue;
+        var i = (y * w + x) * 4;
+        data[i] = Math.min(255, data[i] + rgb[0] * alpha);
+        data[i + 1] = Math.min(255, data[i + 1] + rgb[1] * alpha);
+        data[i + 2] = Math.min(255, data[i + 2] + rgb[2] * alpha);
+        data[i + 3] = Math.min(255, data[i + 3] + alpha * 255);
+      }
+    }
+  }
+  function stampSegment(buf, x0, y0, x1, y1, r, rgb, alpha) {
+    var dx = x1 - x0, dy = y1 - y0;
+    var len = Math.sqrt(dx * dx + dy * dy);
+    var steps = Math.max(1, Math.ceil(len / Math.max(1, r * 0.5)));
+    for (var i = 0; i <= steps; i++) {
+      var t = i / steps;
+      stampCircle(buf, x0 + dx * t, y0 + dy * t, r, rgb, alpha);
+    }
+  }
+
+  /* ---------------- Generators ---------------- */
+  function baseGradient(w, h, palette, darkness, rng) {
+    var buf = makeBuffer(w, h);
+    var c0 = shade(palette[0], 0.10 + darkness * 0.35);
+    var c1 = shade(palette[palette.length - 1], 0.12 + darkness * 0.4);
+    var diag = 0.6 + rng() * 0.4;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var t = (x / w) * diag + (y / h) * (1 - diag);
+        var i = (y * w + x) * 4;
+        buf.data[i] = lerp(c0[0], c1[0], t);
+        buf.data[i + 1] = lerp(c0[1], c1[1], t);
+        buf.data[i + 2] = lerp(c0[2], c1[2], t);
+        buf.data[i + 3] = 255;
+      }
+    }
+    return buf;
+  }
+
+  function genFlow(o) {
+    var w = o.w, h = o.h, rng = o.rng, palette = o.palette, params = o.params;
+    var base = o.alpha ? makeBuffer(w, h) : baseGradient(w, h, palette, params.baseDarkness, rng);
+    var ink = makeBuffer(w, h);
+    var freq = params.frequency;
+    var turns = 2.2 + rng() * 1.6;
+    var seedOff = Math.floor(rng() * 100000);
+    var stepLen = 2.5 + rng() * 1.5;
+    var flows = params.flows;
+    var maxSteps = params.traceLength;
+    var width = params.strokeWidth;
+    for (var i = 0; i < flows; i++) {
+      var x = rng() * w, y = rng() * h;
+      var ci = Math.floor(rng() * palette.length);
+      var cj = Math.floor(rng() * palette.length);
+      var colA = palette[ci], colB = palette[cj];
+      var alpha = 0.30 + rng() * 0.30;
+      var len = Math.floor(maxSteps * (0.55 + rng() * 0.9));
+      var px = x, py = y;
+      for (var s = 0; s < len; s++) {
+        var n = fbm(x / w * freq, y / h * freq, 4, seedOff);
+        var ang = (n * 2 - 1) * Math.PI * turns;
+        x += Math.cos(ang) * stepLen;
+        y += Math.sin(ang) * stepLen;
+        if (x < -30 || x > w + 30 || y < -30 || y > h + 30) break;
+        var t = s / len;
+        var c = lerpRgb(colA, colB, t);
+        stampSegment(ink, px, py, x, y, width * 0.5, c, alpha);
+        px = x; py = y;
+      }
+    }
+    return { base: base, ink: ink };
+  }
+
+  function genWaves(o) {
+    var w = o.w, h = o.h, rng = o.rng, palette = o.palette, params = o.params;
+    var cell = 5;
+    var gw = Math.ceil(w / cell) + 1, gh = Math.ceil(h / cell) + 1;
+    var grid = new Float32Array(gw * gh);
+    var freq = params.frequency * 0.42;
+    var seedOff = Math.floor(rng() * 100000);
+    var stretchX = 0.28 + rng() * 0.25;
+    var rot = rng() * Math.PI * 2;
+    var ca = Math.cos(rot), sa = Math.sin(rot);
+    for (var gy = 0; gy < gh; gy++) {
+      for (var gx = 0; gx < gw; gx++) {
+        var px = gx * cell, py = gy * cell;
+        var rx = px * ca - py * sa, ry = px * sa + py * ca;
+        grid[gy * gw + gx] = fbm(rx / w * freq * stretchX, ry / h * freq, 4, seedOff);
+      }
+    }
+    var buf = makeBuffer(w, h);
+    var bands = 5.0 + params.frequency * 1.15;
+    var sharp = 5.0 + rng() * 3.5;
+    for (var y = 0; y < h; y++) {
+      var fy = y / cell, gy0 = Math.floor(fy), ty = fy - gy0;
+      if (gy0 >= gh - 1) gy0 = gh - 2;
+      for (var x = 0; x < w; x++) {
+        var fx = x / cell, gx0 = Math.floor(fx), tx = fx - gx0;
+        if (gx0 >= gw - 1) gx0 = gw - 2;
+        var g00 = grid[gy0 * gw + gx0], g10 = grid[gy0 * gw + gx0 + 1];
+        var g01 = grid[(gy0 + 1) * gw + gx0], g11 = grid[(gy0 + 1) * gw + gx0 + 1];
+        var v = lerp(lerp(g00, g10, tx), lerp(g01, g11, tx), ty);
+        var s = Math.abs(Math.sin(v * Math.PI * bands));
+        var band = Math.pow(s, sharp);
+        var t = Math.min(1, Math.max(0, band * 1.9));
+        var pos = t * (palette.length - 1);
+        var i0 = Math.floor(pos), i1 = Math.min(palette.length - 1, i0 + 1), tt = pos - i0;
+        var c = lerpRgb(palette[i0], palette[i1], tt);
+        var dark = o.alpha ? 1 : (0.12 + params.baseDarkness * 0.40);
+        var i = (y * w + x) * 4;
+        if (o.alpha) {
+          buf.data[i] = c[0]; buf.data[i + 1] = c[1]; buf.data[i + 2] = c[2];
+          buf.data[i + 3] = Math.round(240 * Math.min(1, 0.18 + band * 1.15));
+        } else {
+          buf.data[i] = c[0] * (dark + (1 - dark) * band);
+          buf.data[i + 1] = c[1] * (dark + (1 - dark) * band);
+          buf.data[i + 2] = c[2] * (dark + (1 - dark) * band);
+          buf.data[i + 3] = 255;
+        }
+      }
+    }
+    return { base: buf, ink: makeBuffer(w, h) };
+  }
+
+  function genRings(o) {
+    var w = o.w, h = o.h, rng = o.rng, palette = o.palette, params = o.params;
+    var base = o.alpha ? makeBuffer(w, h) : baseGradient(w, h, palette, params.baseDarkness, rng);
+    var ink = makeBuffer(w, h);
+    var cx = w * (0.3 + rng() * 0.4), cy = h * (0.3 + rng() * 0.4);
+    var maxR = Math.sqrt(Math.max(cx, w - cx) * Math.max(cx, w - cx) + Math.max(cy, h - cy) * Math.max(cy, h - cy)) + 40;
+    var spacing = Math.min(w, h) / (9 + params.frequency * 2.4);
+    var seedOff = Math.floor(rng() * 100000);
+    var width = params.strokeWidth;
+    var ring = 0;
+    for (var r = spacing * 0.6; r < maxR; r += spacing * (0.72 + rng() * 0.35)) {
+      var col = palette[ring % palette.length];
+      var alpha = 0.5 + rng() * 0.45;
+      var span = (0.35 + rng() * 0.85) * Math.PI * 2;
+      var start = rng() * Math.PI * 2;
+      var wob = 0.3 + rng() * 0.7;
+      var arcLen = r * span;
+      var steps = Math.max(8, Math.ceil(arcLen / 3));
+      for (var i = 0; i <= steps; i++) {
+        var th = start + (span * i) / steps;
+        var rw = r + (valueNoise(Math.cos(th) * 1.6 + seedOff, Math.sin(th) * 1.6, seedOff) - 0.5) * spacing * wob;
+        var x = cx + Math.cos(th) * rw, y = cy + Math.sin(th) * rw;
+        stampCircle(ink, x, y, width * (0.8 + 0.7 * Math.abs(Math.sin(th * 2 + ring))), col, alpha);
+      }
+      ring++;
+    }
+    return { base: base, ink: ink };
+  }
+
+  function genNebula(o) {
+    var w = o.w, h = o.h, rng = o.rng, palette = o.palette, params = o.params;
+    var base = o.alpha ? makeBuffer(w, h) : baseGradient(w, h, palette, params.baseDarkness, rng);
+    var ink = makeBuffer(w, h);
+    var minDim = Math.min(w, h);
+    var blobs = 9 + Math.floor(rng() * 6);
+    for (var i = 0; i < blobs; i++) {
+      var bx = rng() * w, by = rng() * h;
+      var br = minDim * (0.16 + rng() * 0.34);
+      var col = palette[Math.floor(rng() * palette.length)];
+      var alpha = 0.35 + rng() * 0.4;
+      var sigma = br * 0.52;
+      var x0 = Math.max(0, Math.floor(bx - br * 2)), x1 = Math.min(w - 1, Math.ceil(bx + br * 2));
+      var y0 = Math.max(0, Math.floor(by - br * 2)), y1 = Math.min(h - 1, Math.ceil(by + br * 2));
+      for (var y = y0; y <= y1; y++) {
+        var dy = y - by;
+        for (var x = x0; x <= x1; x++) {
+          var dx = x - bx;
+          var d2 = dx * dx + dy * dy;
+          var g = Math.exp(-d2 / (2 * sigma * sigma)) * alpha;
+          if (g < 0.004) continue;
+          var j = (y * w + x) * 4;
+          ink.data[j] = Math.min(255, ink.data[j] + col[0] * g);
+          ink.data[j + 1] = Math.min(255, ink.data[j + 1] + col[1] * g);
+          ink.data[j + 2] = Math.min(255, ink.data[j + 2] + col[2] * g);
+          ink.data[j + 3] = Math.min(255, ink.data[j + 3] + g * 255);
+        }
+      }
+    }
+    var starCount = Math.floor((w * h) / 2600);
+    var starCol = palette[palette.length - 1];
+    for (var s = 0; s < starCount; s++) {
+      var sx = rng() * w, sy = rng() * h;
+      var sr = 0.6 + rng() * 1.6;
+      var sa = 0.4 + rng() * 0.6;
+      var sc = rng() < 0.55 ? [255, 255, 255] : starCol;
+      stampCircle(ink, sx, sy, sr, sc, sa);
+    }
+    return { base: base, ink: ink };
+  }
+
+  /* ---------------- Compositing ---------------- */
+  function compositeScreen(dst, src, strength) {
+    var d = dst.data, s = src.data;
+    for (var i = 0; i < d.length; i += 4) {
+      var sa = s[i + 3] / 255;
+      if (sa <= 0) continue;
+      var eff = strength * sa;
+      d[i] = Math.min(255, d[i] + (s[i] - d[i] * s[i] / 255) * eff);
+      d[i + 1] = Math.min(255, d[i + 1] + (s[i + 1] - d[i + 1] * s[i + 1] / 255) * eff);
+      d[i + 2] = Math.min(255, d[i + 2] + (s[i + 2] - d[i + 2] * s[i + 2] / 255) * eff);
+      d[i + 3] = Math.min(255, d[i + 3] + sa * 255 * strength);
+    }
+  }
+  function compositeOver(dst, src, strength) {
+    var d = dst.data, s = src.data;
+    for (var i = 0; i < d.length; i += 4) {
+      var sa = s[i + 3] / 255 * strength;
+      if (sa <= 0) continue;
+      var da = d[i + 3] / 255;
+      var outA = sa + da * (1 - sa);
+      if (outA <= 0) { d[i + 3] = 0; continue; }
+      d[i] = (s[i] * sa + d[i] * da * (1 - sa)) / outA;
+      d[i + 1] = (s[i + 1] * sa + d[i + 1] * da * (1 - sa)) / outA;
+      d[i + 2] = (s[i + 2] * sa + d[i + 2] * da * (1 - sa)) / outA;
+      d[i + 3] = outA * 255;
+    }
+  }
+
+  /* ---------------- Post FX ---------------- */
+  function applyShine(buf, amt) {
+    if (amt <= 0) return;
+    var w = buf.w, h = buf.h, data = buf.data;
+    var ang = -0.6;
+    var ca = Math.cos(ang), sa = Math.sin(ang);
+    var maxR = (w * ca + h * sa);
+    var center = maxR * 0.5;
+    var sigma = maxR * 0.16;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var t = x * ca + y * sa;
+        var dd = (t - center) / sigma;
+        var inten = Math.exp(-dd * dd * 0.5) * amt;
+        if (inten < 0.003) continue;
+        var i = (y * w + x) * 4;
+        data[i] = Math.min(255, data[i] + 255 * inten);
+        data[i + 1] = Math.min(255, data[i + 1] + 255 * inten);
+        data[i + 2] = Math.min(255, data[i + 2] + 255 * inten);
+      }
+    }
+  }
+  function applyGrain(buf, amt, rng) {
+    if (amt <= 0) return;
+    var data = buf.data;
+    var amp = amt * 70;
+    for (var i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 8) continue;
+      var n = (rng() * 2 - 1) * amp;
+      data[i] = Math.max(0, Math.min(255, data[i] + n));
+      data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + n));
+      data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + n));
+    }
+  }
+  function applyChroma(buf, d) {
+    d = Math.round(d);
+    if (d <= 0) return;
+    var w = buf.w, h = buf.h, src = new Uint8ClampedArray(buf.data);
+    var data = buf.data;
+    for (var y = 0; y < h; y++) {
+      var row = y * w * 4;
+      for (var x = 0; x < w; x++) {
+        var i = row + x * 4;
+        var xr = Math.max(0, Math.min(w - 1, x - d));
+        var xb = Math.max(0, Math.min(w - 1, x + d));
+        data[i] = src[row + xr * 4];
+        data[i + 2] = src[row + xb * 4 + 2];
+      }
+    }
+  }
+  function applyScanlines(buf, strength) {
+    if (strength <= 0) return;
+    var w = buf.w, h = buf.h, data = buf.data;
+    var period = 3, thick = 1;
+    for (var y = 0; y < h; y++) {
+      if (y % period < thick) {
+        var f = 1 - strength * 0.55;
+        var row = y * w * 4;
+        for (var x = 0; x < w; x++) {
+          var i = row + x * 4;
+          data[i] *= f; data[i + 1] *= f; data[i + 2] *= f;
+        }
+      }
+    }
+  }
+  function applyVignette(buf, amt) {
+    if (amt <= 0) return;
+    var w = buf.w, h = buf.h, data = buf.data;
+    var cx = w / 2, cy = h / 2;
+    var maxD = Math.sqrt(cx * cx + cy * cy);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var dx = x - cx, dy = y - cy;
+        var d = Math.sqrt(dx * dx + dy * dy) / maxD;
+        var t = Math.max(0, Math.min(1, (d - 0.45) / 0.75));
+        var v = t * t * (3 - 2 * t) * amt;
+        if (v <= 0) continue;
+        var i = (y * w + x) * 4;
+        var f = 1 - v;
+        data[i] *= f; data[i + 1] *= f; data[i + 2] *= f;
+      }
+    }
+  }
+
+  /* ---------------- Main entry ---------------- */
+  function generate(opts) {
+    opts = opts || {};
+    var w = Math.max(8, Math.min(8192, Math.round(opts.width || 800)));
+    var h = Math.max(8, Math.min(8192, Math.round(opts.height || 600)));
+    var style = opts.style || 'flow';
+    var seed = opts.seed != null ? String(opts.seed) : '0';
+    var paletteHex = opts.palette || PRESETS[0].colors;
+    var palette = paletteHex.map(hexToRgb);
+    var params = {
+      flows: opts.flows != null ? opts.flows : 90,
+      frequency: opts.frequency != null ? opts.frequency : 3.0,
+      traceLength: opts.traceLength != null ? opts.traceLength : 140,
+      strokeWidth: opts.strokeWidth != null ? opts.strokeWidth : 2.2,
+      glow: opts.glow != null ? opts.glow : 14,
+      shine: opts.shine != null ? opts.shine : 0.35,
+      grain: opts.grain != null ? opts.grain : 0.14,
+      scanlines: opts.scanlines != null ? opts.scanlines : 0,
+      chroma: opts.chroma != null ? opts.chroma : 0,
+      vignette: opts.vignette != null ? opts.vignette : 0.35,
+      baseDarkness: opts.baseDarkness != null ? opts.baseDarkness : 0.5,
+      alpha: !!opts.alpha
+    };
+    var rng = makeRng(seed + '::' + style);
+    var result;
+    if (style === 'waves') result = genWaves({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
+    else if (style === 'rings') result = genRings({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
+    else if (style === 'nebula') result = genNebula({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
+    else result = genFlow({ w: w, h: h, rng: rng, palette: palette, params: params, alpha: params.alpha });
+
+    var base = result.base, ink = result.ink;
+    var glowAmt = params.glow;
+    if (glowAmt > 0 && style !== 'waves') {
+      var glowBuf = makeBuffer(w, h);
+      glowBuf.data.set(ink.data);
+      boxBlur(glowBuf, glowAmt);
+      compositeScreen(base, glowBuf, 0.85);
+    }
+    if (style !== 'waves') compositeOver(base, ink, 0.92);
+
+    applyShine(base, params.shine);
+    applyChroma(base, params.chroma);
+    applyGrain(base, params.grain, makeRng(seed + '::grain'));
+    applyScanlines(base, params.scanlines);
+    applyVignette(base, params.vignette);
+
+    return { width: w, height: h, data: base.data };
+  }
+
+  return {
+    generate: generate,
+    PRESETS: PRESETS,
+    randomPalette: randomPalette,
+    hexToRgb: hexToRgb,
+    rgbToHex: rgbToHex,
+    hslToHex: hslToHex,
+    shade: shade,
+    lerpRgb: lerpRgb,
+    makeRng: makeRng,
+    cyrb53: cyrb53
+  };
+})();
+
+</script>
+<script>
+/* App logic for the procedural wallpaper generator. */
+(function () {
+  'use strict';
+
+  /* ---------------- state ---------------- */
+  var ASPECTS = [
+    { label: '3:4', w: 3, h: 4 },
+    { label: '4:3', w: 4, h: 3 },
+    { label: '16:9', w: 16, h: 9 },
+    { label: '9:16', w: 9, h: 16 },
+    { label: '1:1', w: 1, h: 1 },
+    { label: '21:9', w: 21, h: 9 },
+    { label: '2:3', w: 2, h: 3 },
+    { label: '3:2', w: 3, h: 2 }
+  ];
+  var MEGAPIXELS = [1, 2, 3, 4];
+
+  function randomSeedString() {
+    var words = ['aurora','nebula','prism','ember','drift','flux','halo','lumen','orbit','pulse','ridge','solar','wave','zenith','vertex','echo','flare','iris','nova','pixel'];
+    var r = Math.floor(Math.random() * words.length);
+    return words[r] + '-' + Math.floor(1000 + Math.random() * 9000);
+  }
+
+  var state = {
+    mode: 'mp',           // 'mp' | 'custom'
+    aspectIdx: 2,         // 16:9
+    mp: 2,                // megapixels
+    customW: 1920,
+    customH: 1080,
+    lockAspect: true,
+    style: 'flow',
+    paletteMode: 'preset', // 'preset' | 'random' | 'custom'
+    presetIdx: 0,
+    palette: GEN.PRESETS[0].colors.slice(),
+    colorCount: 5,
+    seed: randomSeedString(),
+    quantum: false,
+    endpoint: 'https://lfdr.de/qrng_api/qrng?length=64&format=HEX',
+    alpha: false,
+    params: {
+      flows: 110, frequency: 3.0, traceLength: 140, strokeWidth: 2.4,
+      glow: 14, shine: 0.35, grain: 0.14, scanlines: 0, chroma: 2,
+      vignette: 0.35, baseDarkness: 0.5
+    }
+  };
+
+  /* ---------------- DOM refs ---------------- */
+  function $(id) { return document.getElementById(id); }
+  var els = {};
+  ['aspectChips','mpSeg','resReadout','resSub','customW','customH','lockAspect','styleCards',
+   'presetList','paletteColors','countSlider','countVal','seedInput','btnRandomSeed','btnQuantum',
+   'seedOrigin','endpointInput','sliders','alphaToggle','btnDownload','preview','canvasFrame',
+   'metaRes','metaMp','metaStyle','metaPalette','metaSeed','renderOverlay','toasts','btnRegen',
+   'stageWrap'].forEach(function (id) { els[id] = $(id); });
+
+  /* ---------------- resolution math ---------------- */
+  function computeResolution() {
+    if (state.mode === 'custom') {
+      var w = Math.max(8, Math.min(8192, Math.round(state.customW || 800)));
+      var h = Math.max(8, Math.min(8192, Math.round(state.customH || 600)));
+      return { w: w, h: h };
+    }
+    var a = ASPECTS[state.aspectIdx];
+    var ratio = a.w / a.h;
+    var area = state.mp * 1e6;
+    var w = Math.sqrt(area * ratio);
+    var h = w / ratio;
+    w = Math.max(8, Math.round(w / 2) * 2);
+    h = Math.max(8, Math.round(h / 2) * 2);
+    return { w: w, h: h };
+  }
+
+  /* ---------------- rendering ---------------- */
+  var renderToken = 0;
+  function scheduleRender() {
+    var token = ++renderToken;
+    showOverlay(true);
+    setTimeout(function () {
+      if (token !== renderToken) return;
+      try {
+        var res = computeResolution();
+        var opts = buildOpts(res);
+        var out = GEN.generate(opts);
+        drawToCanvas(out);
+        updateMeta(res);
+      } catch (err) {
+        console.error(err);
+        toast('Render failed: ' + err.message, 'err');
+      } finally {
+        if (token === renderToken) showOverlay(false);
+      }
+    }, 30);
+  }
+
+  function buildOpts(res) {
+    return {
+      width: res.w, height: res.h,
+      style: state.style,
+      seed: state.seed,
+      palette: state.palette,
+      alpha: state.alpha,
+      flows: state.params.flows,
+      frequency: state.params.frequency,
+      traceLength: state.params.traceLength,
+      strokeWidth: state.params.strokeWidth,
+      glow: state.params.glow,
+      shine: state.params.shine,
+      grain: state.params.grain,
+      scanlines: state.params.scanlines,
+      chroma: state.params.chroma,
+      vignette: state.params.vignette,
+      baseDarkness: state.params.baseDarkness
+    };
+  }
+
+  function drawToCanvas(out) {
+    var canvas = els.preview;
+    canvas.width = out.width; canvas.height = out.height;
+    var ctx = canvas.getContext('2d');
+    var img = ctx.createImageData(out.width, out.height);
+    img.data.set(out.data);
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function showOverlay(show) {
+    els.renderOverlay.classList.toggle('show', !!show);
+  }
+
+  /* ---------------- meta ---------------- */
+  function updateMeta(res) {
+    var mp = (res.w * res.h) / 1e6;
+    els.metaRes.textContent = res.w + ' × ' + res.h;
+    els.metaMp.textContent = mp.toFixed(2) + ' MP';
+    els.metaStyle.textContent = state.style.charAt(0).toUpperCase() + state.style.slice(1);
+    els.metaPalette.textContent = state.palette.length + ' colors';
+    els.metaSeed.textContent = state.seed;
+    els.resReadout.querySelector('.big').textContent = res.w + ' × ' + res.h;
+    els.resSub.textContent = ASPECTS[state.aspectIdx].label + ' · ' + mp.toFixed(2) + ' MP';
+  }
+
+  /* ---------------- UI builders ---------------- */
+  function buildAspectChips() {
+    els.aspectChips.innerHTML = '';
+    ASPECTS.forEach(function (a, i) {
+      var b = document.createElement('button');
+      b.className = 'chip' + (i === state.aspectIdx ? ' active' : '');
+      b.textContent = a.label;
+      b.addEventListener('click', function () {
+        state.aspectIdx = i;
+        state.mode = 'mp';
+        syncModeUI();
+        buildAspectChips();
+        refreshResolutionUI();
+        scheduleRender();
+      });
+      els.aspectChips.appendChild(b);
+    });
+  }
+
+  function buildMpSeg() {
+    els.mpSeg.innerHTML = '';
+    MEGAPIXELS.forEach(function (m) {
+      var b = document.createElement('button');
+      b.textContent = m + ' MP';
+      b.className = m === state.mp && state.mode === 'mp' ? 'active' : '';
+      b.addEventListener('click', function () {
+        state.mp = m; state.mode = 'mp';
+        syncModeUI();
+        buildMpSeg();
+        refreshResolutionUI();
+        scheduleRender();
+      });
+      els.mpSeg.appendChild(b);
+    });
+  }
+
+  function syncModeUI() {
+    var isCustom = state.mode === 'custom';
+    els.aspectChips.parentElement.classList.toggle('disabled', isCustom);
+    els.mpSeg.parentElement.classList.toggle('disabled', isCustom);
+    document.querySelector('#customSection').classList.toggle('disabled', !isCustom);
+    document.querySelectorAll('.mode-tab').forEach(function (t) {
+      t.classList.toggle('active', t.dataset.mode === state.mode);
+    });
+  }
+
+  function refreshResolutionUI() {
+    var res = computeResolution();
+    if (document.activeElement !== els.customW) els.customW.value = res.w;
+    if (document.activeElement !== els.customH) els.customH.value = res.h;
+    updateMeta(res);
+  }
+
+  function buildStyleCards() {
+    var styles = [
+      { id: 'flow', name: 'Flow Field', icon: '<path d="M3 18c4-10 7 4 11-6 2-4 5-4 7-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
+      { id: 'waves', name: 'Wave Bands', icon: '<path d="M3 8c3-3 6 3 9 0s6 3 9 0M3 15c3-3 6 3 9 0s6 3 9 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
+      { id: 'rings', name: 'Rings', icon: '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".65"/><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".4"/>' },
+      { id: 'nebula', name: 'Nebula', icon: '<circle cx="9" cy="9" r="4" fill="currentColor" opacity=".85"/><circle cx="17" cy="15" r="2.4" fill="currentColor" opacity=".55"/><circle cx="15" cy="6" r="1.3" fill="currentColor" opacity=".8"/>' }
+    ];
+    els.styleCards.innerHTML = '';
+    styles.forEach(function (s) {
+      var b = document.createElement('button');
+      b.className = 'style-card' + (s.id === state.style ? ' active' : '');
+      b.innerHTML = '<svg viewBox="0 0 24 24">' + s.icon + '</svg><span>' + s.name + '</span>';
+      b.addEventListener('click', function () {
+        state.style = s.id;
+        buildStyleCards();
+        applyStyleDisabled();
+        scheduleRender();
+      });
+      els.styleCards.appendChild(b);
+    });
+  }
+
+  function buildPresets() {
+    els.presetList.innerHTML = '';
+    var randBtn = document.createElement('button');
+    randBtn.className = 'preset-random' + (state.paletteMode === 'random' ? ' active' : '');
+    randBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Random palette';
+    randBtn.addEventListener('click', function () {
+      state.paletteMode = 'random';
+      applyRandomPalette();
+      buildPresets();
+      buildPaletteColors();
+      scheduleRender();
+    });
+    els.presetList.appendChild(randBtn);
+
+    GEN.PRESETS.forEach(function (p, i) {
+      var b = document.createElement('button');
+      b.className = 'preset' + (state.paletteMode === 'preset' && state.presetIdx === i ? ' active' : '');
+      var strip = document.createElement('div');
+      strip.className = 'strip';
+      strip.style.background = 'linear-gradient(90deg,' + p.colors.join(',') + ')';
+      var name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = p.name;
+      b.appendChild(strip); b.appendChild(name);
+      b.addEventListener('click', function () {
+        state.paletteMode = 'preset';
+        state.presetIdx = i;
+        state.palette = p.colors.slice();
+        state.colorCount = p.colors.length;
+        els.countSlider.value = state.colorCount;
+        els.countVal.textContent = state.colorCount;
+        buildPresets();
+        buildPaletteColors();
+        scheduleRender();
+      });
+      els.presetList.appendChild(b);
+    });
+  }
+
+  function applyRandomPalette() {
+    var rng = GEN.makeRng(state.seed + '::palette');
+    state.palette = GEN.randomPalette(state.colorCount, rng);
+  }
+
+  function buildPaletteColors() {
+    els.paletteColors.innerHTML = '';
+    state.palette.forEach(function (hex, i) {
+      var dot = document.createElement('div');
+      dot.className = 'color-dot';
+      dot.style.background = hex;
+      var inp = document.createElement('input');
+      inp.type = 'color';
+      inp.value = hex;
+      inp.title = 'Edit color ' + (i + 1);
+      inp.addEventListener('input', function () {
+        state.paletteMode = 'custom';
+        state.palette[i] = inp.value;
+        dot.style.background = inp.value;
+        buildPresets();
+        scheduleRender();
+      });
+      dot.appendChild(inp);
+      els.paletteColors.appendChild(dot);
+    });
+  }
+
+  /* ---------------- sliders ---------------- */
+  var SLIDERS = [
+    { key: 'flows', label: 'Flow count', min: 10, max: 300, step: 5, fmt: v => String(v), group: 'structure' },
+    { key: 'frequency', label: 'Frequency', min: 0.5, max: 8, step: 0.1, fmt: v => v.toFixed(1), group: 'structure' },
+    { key: 'traceLength', label: 'Trace length', min: 20, max: 400, step: 5, fmt: v => String(v), group: 'structure' },
+    { key: 'strokeWidth', label: 'Stroke width', min: 0.5, max: 8, step: 0.1, fmt: v => v.toFixed(1), group: 'structure' },
+    { key: 'glow', label: 'Glow', min: 0, max: 40, step: 1, fmt: v => String(v), group: 'fx' },
+    { key: 'shine', label: 'Shine', min: 0, max: 0.9, step: 0.02, fmt: v => Math.round(v * 100) + '%', group: 'fx' },
+    { key: 'grain', label: 'Grain', min: 0, max: 0.6, step: 0.01, fmt: v => Math.round(v * 100) + '%', group: 'fx' },
+    { key: 'scanlines', label: 'CRT scanlines', min: 0, max: 1, step: 0.02, fmt: v => Math.round(v * 100) + '%', group: 'fx' },
+    { key: 'chroma', label: 'Chromatic aberration', min: 0, max: 8, step: 0.5, fmt: v => v.toFixed(1), group: 'fx' },
+    { key: 'vignette', label: 'Vignette', min: 0, max: 0.9, step: 0.02, fmt: v => Math.round(v * 100) + '%', group: 'fx' },
+    { key: 'baseDarkness', label: 'Base darkness', min: 0, max: 1, step: 0.02, fmt: v => Math.round(v * 100) + '%', group: 'fx' }
+  ];
+
+  function buildSliders() {
+    els.sliders.innerHTML = '';
+    SLIDERS.forEach(function (cfg) {
+      var row = document.createElement('div');
+      row.className = 'slider-row';
+      var top = document.createElement('div');
+      top.className = 'slider-top';
+      var lab = document.createElement('label');
+      lab.textContent = cfg.label;
+      var val = document.createElement('span');
+      val.className = 'val';
+      val.id = 'val-' + cfg.key;
+      top.appendChild(lab); top.appendChild(val);
+      var input = document.createElement('input');
+      input.type = 'range';
+      input.min = cfg.min; input.max = cfg.max; input.step = cfg.step;
+      input.value = state.params[cfg.key];
+      input.id = 'sl-' + cfg.key;
+      input.addEventListener('input', function () {
+        var v = parseFloat(input.value);
+        state.params[cfg.key] = v;
+        val.textContent = cfg.fmt(v);
+        input.style.setProperty('--fill', ((v - cfg.min) / (cfg.max - cfg.min) * 100) + '%');
+        scheduleRender();
+      });
+      val.textContent = cfg.fmt(state.params[cfg.key]);
+      input.style.setProperty('--fill', ((state.params[cfg.key] - cfg.min) / (cfg.max - cfg.min) * 100) + '%');
+      row.appendChild(top); row.appendChild(input);
+      els.sliders.appendChild(row);
+    });
+    applyStyleDisabled();
+  }
+
+  function applyStyleDisabled() {
+    var flowOnly = ['flows', 'traceLength', 'strokeWidth'];
+    var isFlow = state.style === 'flow';
+    flowOnly.forEach(function (k) {
+      var el = $('sl-' + k);
+      if (el) el.disabled = !isFlow;
+    });
+    var glowEl = $('sl-glow');
+    if (glowEl) glowEl.disabled = state.style === 'waves';
+  }
+
+  /* ---------------- seed & quantum ---------------- */
+  function setSeed(s, originLabel) {
+    state.seed = s;
+    els.seedInput.value = s;
+    els.seedOrigin.classList.remove('quantum', 'error');
+    els.seedOrigin.innerHTML = '<span class="dot"></span><span></span>';
+    els.seedOrigin.querySelector('span:last-child').textContent = originLabel;
+    if (originLabel.indexOf('Quantum') === 0) els.seedOrigin.classList.add('quantum');
+    scheduleRender();
+  }
+
+  function randomizeSeed() {
+    setSeed(randomSeedString(), 'Local PRNG');
+    if (state.paletteMode === 'random') { applyRandomPalette(); buildPaletteColors(); }
+  }
+
+  function fetchQuantumSeed() {
+    var btn = els.btnQuantum;
+    btn.classList.add('loading');
+    btn.disabled = true;
+    els.seedOrigin.classList.remove('quantum', 'error');
+    els.seedOrigin.innerHTML = '<span class="dot"></span><span>Requesting quantum entropy…</span>';
+    var url = els.endpointInput.value.trim() || state.endpoint;
+    fetch(url, { method: 'GET' })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json();
+      })
+      .then(function (json) {
+        var qrn = Array.isArray(json.qrn) ? json.qrn[0] : (json.qrn || json.QRN || '');
+        if (!qrn) throw new Error('unexpected response shape');
+        var hex = String(qrn).replace(/\s+/g, '');
+        var seed = 'q-' + hex.slice(0, 32);
+        state.quantum = true;
+        setSeed(seed, 'Quantum RNG · lfdr.de');
+        if (state.paletteMode === 'random') { applyRandomPalette(); buildPaletteColors(); }
+        toast('Quantum entropy loaded — seed updated', 'ok');
+      })
+      .catch(function (err) {
+        state.quantum = false;
+        els.seedOrigin.classList.add('error');
+        els.seedOrigin.innerHTML = '<span class="dot"></span><span>Quantum API unreachable — using local PRNG</span>';
+        toast('QRNG unavailable: ' + err.message + '. Falling back to local PRNG.', 'err');
+        setSeed(randomSeedString(), 'Local PRNG (fallback)');
+      })
+      .finally(function () {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      });
+  }
+
+  /* ---------------- download ---------------- */
+  function downloadPng() {
+    var res = computeResolution();
+    var opts = buildOpts(res);
+    showOverlay(true);
+    setTimeout(function () {
+      try {
+        var out = GEN.generate(opts);
+        var canvas = document.createElement('canvas');
+        canvas.width = out.width; canvas.height = out.height;
+        var ctx = canvas.getContext('2d');
+        var img = ctx.createImageData(out.width, out.height);
+        img.data.set(out.data);
+        ctx.putImageData(img, 0, 0);
+        canvas.toBlob(function (blob) {
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          var ext = state.alpha ? 'overlay' : 'wallpaper';
+          a.download = 'procedural-' + ext + '-' + state.style + '-' + res.w + 'x' + res.h + '-' + state.seed.replace(/[^a-zA-Z0-9-]/g, '') + '.png';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+          toast('PNG saved — ' + res.w + '×' + res.h, 'ok');
+          showOverlay(false);
+        }, 'image/png');
+      } catch (err) {
+        showOverlay(false);
+        toast('Download failed: ' + err.message, 'err');
+      }
+    }, 30);
+  }
+
+  /* ---------------- toast ---------------- */
+  function toast(msg, kind) {
+    var t = document.createElement('div');
+    t.className = 'toast ' + (kind || 'ok');
+    t.innerHTML = '<span class="tdot"></span><span></span>';
+    t.querySelector('span:last-child').textContent = msg;
+    els.toasts.appendChild(t);
+    setTimeout(function () { t.classList.add('out'); setTimeout(function () { t.remove(); }, 350); }, 3400);
+  }
+
+  /* ---------------- wiring ---------------- */
+  function init() {
+    buildAspectChips();
+    buildMpSeg();
+    buildStyleCards();
+    buildPresets();
+    buildPaletteColors();
+    buildSliders();
+    syncModeUI();
+    refreshResolutionUI();
+    els.countSlider.style.setProperty('--fill', ((state.colorCount - 2) / (8 - 2) * 100) + '%');
+
+    document.querySelectorAll('.mode-tab').forEach(function (t) {
+      t.addEventListener('click', function () {
+        state.mode = t.dataset.mode;
+        syncModeUI();
+        refreshResolutionUI();
+        scheduleRender();
+      });
+    });
+
+    els.customW.addEventListener('change', onCustomChange);
+    els.customH.addEventListener('change', onCustomChange);
+    els.lockAspect.addEventListener('change', function () {
+      if (state.lockAspect) {
+        var a = ASPECTS[state.aspectIdx];
+        state.customH = Math.round(state.customW * a.h / a.w / 2) * 2;
+        els.customH.value = state.customH;
+        refreshResolutionUI();
+        scheduleRender();
+      }
+    });
+
+    els.countSlider.addEventListener('input', function () {
+      state.colorCount = parseInt(els.countSlider.value, 10);
+      els.countVal.textContent = state.colorCount;
+      els.countSlider.style.setProperty('--fill', ((state.colorCount - 2) / (8 - 2) * 100) + '%');
+      if (state.paletteMode === 'random') {
+        applyRandomPalette();
+        buildPaletteColors();
+        scheduleRender();
+      } else {
+        var cur = state.palette.slice();
+        while (cur.length < state.colorCount) {
+          var last = cur[cur.length - 1];
+          var rgb = GEN.hexToRgb(last);
+          cur.push(GEN.rgbToHex(Math.min(255, rgb[0] * 1.15), Math.min(255, rgb[1] * 1.15), Math.min(255, rgb[2] * 1.15)));
+        }
+        state.palette = cur.slice(0, state.colorCount);
+        buildPaletteColors();
+        scheduleRender();
+      }
+    });
+
+    els.seedInput.addEventListener('change', function () {
+      setSeed(els.seedInput.value.trim() || randomSeedString(), 'Local PRNG');
+      if (state.paletteMode === 'random') { applyRandomPalette(); buildPaletteColors(); }
+    });
+    els.btnRandomSeed.addEventListener('click', randomizeSeed);
+    els.btnQuantum.addEventListener('click', fetchQuantumSeed);
+    els.endpointInput.addEventListener('change', function () {
+      state.endpoint = els.endpointInput.value.trim();
+    });
+
+    document.querySelectorAll('#alphaToggle button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.alpha = b.dataset.alpha === 'true';
+        document.querySelectorAll('#alphaToggle button').forEach(function (x) { x.classList.toggle('active', x === b); });
+        scheduleRender();
+      });
+    });
+
+    els.btnRegen.addEventListener('click', randomizeSeed);
+    els.btnDownload.addEventListener('click', downloadPng);
+
+    window.addEventListener('keydown', function (e) {
+      var tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.code === 'Space') { e.preventDefault(); randomizeSeed(); }
+      if (e.key === 'd' || e.key === 'D') downloadPng();
+    });
+
+    setSeed(state.seed, 'Local PRNG');
+    els.seedOrigin.classList.remove('quantum', 'error');
+    els.seedOrigin.innerHTML = '<span class="dot"></span><span>Local PRNG</span>';
+  }
+
+  function onCustomChange() {
+    state.customW = Math.max(8, Math.min(8192, parseInt(els.customW.value, 10) || 800));
+    state.customH = Math.max(8, Math.min(8192, parseInt(els.customH.value, 10) || 600));
+    if (state.lockAspect) {
+      var a = ASPECTS[state.aspectIdx];
+      state.customH = Math.round(state.customW * a.h / a.w / 2) * 2;
+      els.customH.value = state.customH;
+    }
+    state.mode = 'custom';
+    syncModeUI();
+    refreshResolutionUI();
+    scheduleRender();
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
+
+</script>
+</body>
+</html>
